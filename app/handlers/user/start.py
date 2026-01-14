@@ -1,22 +1,13 @@
-from aiogram import Router
+# app/handlers/user/start.py
+from aiogram import Router, F
 from aiogram.types import Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters import Command  # <-- добавлено
+from aiogram.filters import CommandStart
+from app.keyboards.user import categories_keyboard
+from app.handlers.user.constants import WELCOME_TEXT
 
 router = Router()
 
-# Пример категорий
-CATEGORIES = ["Мотивационные лакомства", "Погрызухи", "Гипоаллергенные лакомства"]
-
-@router.message(Command("start"))  # <-- исправлено
-async def start_handler(message: Message):
-    builder = InlineKeyboardBuilder()
-    for cat in CATEGORIES:
-        # callback_data используем как идентификатор категории
-        builder.button(text=cat, callback_data=f"cat:{cat}")
-    keyboard = builder.as_markup(row_width=1)
-
-    await message.answer(
-        "🐶 Добро пожаловать в Barkery!\nВыберите категорию:",
-        reply_markup=keyboard
-    )
+@router.message(CommandStart())
+async def start(message: Message):
+    kb = categories_keyboard()
+    await message.answer(WELCOME_TEXT, reply_markup=kb)

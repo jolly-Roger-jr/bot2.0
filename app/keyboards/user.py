@@ -1,46 +1,24 @@
+# app/keyboards/user.py
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from app.services import catalog
 
 def categories_keyboard():
-    return InlineKeyboardMarkup(
+    kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🍖 Лакомства",
-                    callback_data="category_treats"
-                )
-            ]
+            [InlineKeyboardButton(text=cat, callback_data=f"category:{cat}")]
+            for cat in catalog.get_categories()
         ]
     )
+    return kb
 
-def categories_keyboard(categories):
-    buttons = [
-        [InlineKeyboardButton(text=f"🦴 {c.name}", callback_data=f"cat_{c.id}")]
-        for c in categories
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def product_cart_keyboard(product_id, grams):
-    if grams < 100:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🛒 В корзину", callback_data=f"add_{product_id}")]
-            ]
-        )
-    return InlineKeyboardMarkup(
+def products_keyboard(category: str):
+    products = catalog.get_products(category)
+    if not products:
+        return None
+    kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="➖", callback_data=f"dec_{product_id}"),
-                InlineKeyboardButton(text=f"{grams} г", callback_data="noop"),
-                InlineKeyboardButton(text="➕", callback_data=f"add_{product_id}")
-            ],
-            [InlineKeyboardButton(text="🛒 Корзина", callback_data="cart")]
+            [InlineKeyboardButton(text=p, callback_data=f"product:{p}")]
+            for p in products
         ]
     )
-
-def cart_keyboard():
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Очистить", callback_data="cart_clear")],
-            [InlineKeyboardButton(text="🛎️ Оформить заказ", callback_data="order")]
-        ]
-    )
+    return kb

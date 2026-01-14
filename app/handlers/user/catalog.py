@@ -1,45 +1,21 @@
+# app/handlers/user/catalog.py
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import CallbackQuery
+from app.keyboards.user import products_keyboard
+from app.handlers.user.constants import NO_PRODUCTS_TEXT
 
 router = Router()
 
-# Категории и товары
-CATEGORIES = ["Мотивационные лакомства", "Погрызухи", "Гипоаллергенные лакомства"]
-
-PRODUCTS = {
-    "Мотивационные лакомства": [
-        {"id": "m1", "name": "Лакомство A"},
-        {"id": "m2", "name": "Лакомство B"},
-    ],
-    "Погрызухи": [
-        {"id": "p1", "name": "Погрызуха X"},
-        {"id": "p2", "name": "Погрызуха Y"},
-    ],
-    "Гипоаллергенные лакомства": [
-        {"id": "g1", "name": "Гипо A"},
-        {"id": "g2", "name": "Гипо B"},
-    ],
-}
-
-# Выбор категории
 @router.callback_query(F.data.startswith("category:"))
-async def show_products(call: CallbackQuery):
-    category = call.data.split(":")[1]
-    products = PRODUCTS.get(category, [])
-    if not products:
-        await call.answer("Нет товаров в этой категории", show_alert=True)
+async def category_callback(query: CallbackQuery):
+    category = query.data.split(":", 1)[1]
+    kb = products_keyboard(category)
+    if not kb:
+        await query.answer(NO_PRODUCTS_TEXT)
         return
+    await query.message.edit_text(f"Товары в категории {category}:", reply_markup=kb)
 
-    builder = InlineKeyboardBuilder()
-    for product in products:
-        builder.row(
-            InlineKeyboardButton(text=f"{product['name']} ➕", callback_data=f"add:{product['id']}"),
-            InlineKeyboardButton(text=f"{product['name']} ➖", callback_data=f"remove:{product['id']}")
-        )
-    # Кнопка перехода в корзину
-    builder.button(text="🛒 Корзина", callback_data="view_cart")
-
-    keyboard = builder.as_markup()
-    await call.message.answer(f"Категория: {category}", reply_markup=keyboard)
-    await call.answer()
+@router.callback_query(F.data.startswith("product:"))
+async def product_callback(query: CallbackQuery):
+    product = query.data.split(":", 1)[1]
+    await query.answer(f"Вы выбрали товар: {product}")

@@ -1,20 +1,30 @@
-import asyncio
+# app/bot.py
 import logging
-from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
-from app.config import BOT_TOKEN
-from app.dispatcher import setup_dispatcher
+import os
+import asyncio
+from dotenv import load_dotenv
+from aiogram import Bot
+from aiogram.client.bot import DefaultBotProperties
+from app.dispatcher import dp
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("Установите BOT_TOKEN в переменных окружения")
+
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode="HTML")
+)
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
-
-    bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
-    storage = MemoryStorage()
-    dp = Dispatcher(storage=storage)
-
-    setup_dispatcher(dp)
-
-    logging.info("✅ Dispatcher and routers are set up, starting polling...")
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
