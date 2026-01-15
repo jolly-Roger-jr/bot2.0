@@ -1,21 +1,95 @@
-# app/handlers/user/catalog.py
+import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from app.keyboards.user import products_keyboard
-from app.handlers.user.constants import NO_PRODUCTS_TEXT
+from app.keyboards.user import products_keyboard, categories_keyboard, quantity_keyboard
+from app.db.engine import SessionLocal
+from app.db.models import Product, Category, CartItem, User
+from sqlalchemy import select
 
+logger = logging.getLogger(__name__)
 router = Router()
 
+# -------------------------------
+# Выбор категории
+# -------------------------------
 @router.callback_query(F.data.startswith("category:"))
 async def category_callback(query: CallbackQuery):
-    category = query.data.split(":", 1)[1]
-    kb = products_keyboard(category)
+    category_name = query.data.split(":", 1)[1]
+    kb = await products_keyboard(category_name)
     if not kb:
-        await query.answer(NO_PRODUCTS_TEXT)
+        await query.answer("В этой категории пока нет товаров", show_alert=True)
         return
-    await query.message.edit_text(f"Товары в категории {category}:", reply_markup=kb)
+    await query.message.edit_text(f"Товары в категории {category_name}:", reply_markup=kb)
 
+# -------------------------------
+# Выбор товара
+# -------------------------------
 @router.callback_query(F.data.startswith("product:"))
 async def product_callback(query: CallbackQuery):
-    product = query.data.split(":", 1)[1]
-    await query.answer(f"Вы выбрали товар: {product}")
+    _, product_name, category_name = query.data.split(":")
+    kb = quantity_keyboard(product_name, category_name)
+    await query.message.edit_text(
+        f"Вы выбрали товар: {product_name}\nВыберите количество:",
+        reply_markup=kb
+    )
+
+# -------------------------------
+# Назад к категориям
+# -------------------------------
+@router.callback_query(F.data == "back:categories")
+async def back_to_categories_callback(query: CallbackQuery):
+    kb = await categories_keyboard()
+    await query.message.edit_text("Выберите категорию:", reply_markup=kb)
+
+# -------------------------------
+# Назад к товарам
+# -------------------------------
+@router.callback_query(F.data.startswith("back:category:"))
+async def back_to_products_callback(query: CallbackQuery):
+    category_name = query.data.split(":", 2)[2]
+    kb = await products_keyboard(category_name)
+    if not kb:
+        await query.answer("В этой категории пока нет товаров", show_alert=True)
+        return
+    await query.message.edit_text(f"Товары в категории {category_name}:", reply_markup=kb)
+
+# -------------------------------
+# Добавление в корзину
+# -------------------------------
+@router.callback_query(F.data.startswith("cart:add:"))
+async def add_to_cart_callback(query: CallbackQuery):
+    try:
+        _, _, product_name, qty, category_name = query.data.split(":")
+        qty = int(qty)
+        user_id = query.from_user.id
+
+        async with SessionLocal() as session:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalar_one_or_none()
+            if not user:
+                user = User(telegram_id=user_id)
+                session.add(user)
+                await session.commit()
+
+            result = await session.execute(select(Product).where(Product.name == product_name))
+            product = result.scalar_one()
+
+            result = await session.execute(
+                select(CartItem).where(CartItem.user_id == user.id, CartItem.product_id == product.id)
+            )
+            cart_item = result.scalar_one_or_none()
+
+            if cart_item:
+                cart_item.quantity += qty
+            else:
+                cart_item = CartItem(user_id=user.id, product_id=product.id, quantity=qty)
+                session.add(cart_item)
+
+            await session.commit()
+
+        await query.answer(f"{product_name} ({qty} шт.) добавлено в корзину", show_alert=True)
+        logger.info("User %s added %sx %s to cart in category %s", user_id, qty, product_name, category_name)
+
+    except Exception as e:
+        logger.error("Error in add_to_cart_callback: %s", e)
+        await query.answer("Произошла ошибка", show_alert=True)
