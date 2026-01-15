@@ -1,3 +1,4 @@
+import logging
 import os
 import asyncio
 from dotenv import load_dotenv
@@ -5,6 +6,10 @@ from aiogram import Bot
 from aiogram.client.bot import DefaultBotProperties
 from app.dispatcher import dp
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
