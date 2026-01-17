@@ -14,7 +14,7 @@ PRODUCTS = {
 }
 
 async def fill_initial_data():
-    async with SessionLocal() as session:
+    async for session in get_session():
         async with session.begin():
             # --- Категории ---
             for cat_name in CATEGORIES:

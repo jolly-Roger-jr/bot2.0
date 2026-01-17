@@ -1,14 +1,18 @@
+# app/db/engine.py
+
+from pathlib import Path
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.orm import DeclarativeBase
+from app.config import settings
 
-DATABASE_URL = "sqlite+aiosqlite:///./app/db/barkery.db"
+BASE_DIR = Path(__file__).resolve().parents[2]  # barkery_bot/
+DB_PATH = BASE_DIR / "barkery.db"
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    future=True
-)
+DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 
-SessionLocal = async_sessionmaker(
-    bind=engine,
-    expire_on_commit=False
-)
+engine = create_async_engine(DATABASE_URL, echo=True)
+SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+
+class Base(DeclarativeBase):
+    pass

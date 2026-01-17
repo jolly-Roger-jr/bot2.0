@@ -1,39 +1,57 @@
+# app/services/cart.py
+
 from sqlalchemy import select, delete
-from app.db.session import SessionLocal
-from app.db.models import Product, User
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, ForeignKey
+from app.db.session import get_session
+from app.db.models import CartItem, Product
 
-Base = declarative_base()
 
-class CartItem(Base):
-    __tablename__ = "cart_items"
+async def add_to_cart(user_id: int, product_id: int, quantity: int):
+    async for session in get_session():
+        result = await session.execute(
+            select(CartItem).where(
+                CartItem.user_id == str(user_id),
+                CartItem.product_id == product_id
+            )
+        )
+        item = result.scalar_one_or_none()
 
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    product_id = Column(Integer, ForeignKey("products.id"), primary_key=True)
-    grams = Column(Integer, default=0)
+        if item:
+            item.quantity += quantity
+        else:
+            product = await session.get(Product, product_id)
+            if not product:
+                return
 
-async def add_to_cart(user_id: int, product_id: int, delta: int):
-    async with SessionLocal() as session:
-        item = await session.get(CartItem, (user_id, product_id))
-        if not item:
-            item = CartItem(user_id=user_id, product_id=product_id, grams=0)
+            item = CartItem(
+                user_id=str(user_id),
+                product_id=product_id,
+                quantity=quantity,
+                price=product.price
+            )
             session.add(item)
-        item.grams = max(0, item.grams + delta)
-        if item.grams == 0:
-            await session.delete(item)
+
         await session.commit()
 
-async def get_cart(user_id: int):
-    async with SessionLocal() as session:
-        res = await session.execute(
+
+async def get_cart_items(user_id: int):
+    async for session in get_session():
+        result = await session.execute(
             select(CartItem, Product)
-            .join(Product, CartItem.product_id == Product.id)
-            .where(CartItem.user_id == user_id)
+            .join(Product, Product.id == CartItem.product_id)
+            .where(CartItem.user_id == str(user_id))
         )
-        return res.all()
+
+        items = []
+        for cart_item, product in result.all():
+            cart_item.product = product  # 👈 чтобы handler мог читать item.product.name
+            items.append(cart_item)
+
+        return items
+
 
 async def clear_cart(user_id: int):
-    async with SessionLocal() as session:
-        await session.execute(delete(CartItem).where(CartItem.user_id == user_id))
+    async for session in get_session():
+        await session.execute(
+            delete(CartItem).where(CartItem.user_id == str(user_id))
+        )
         await session.commit()

@@ -9,7 +9,7 @@ router = Router()
 
 @router.message(lambda m: m.text and m.text.startswith("+"))
 async def save_phone(message: Message):
-    async with SessionLocal() as session:
+    async for session in get_session():
         user = (await session.execute(
             select(User).where(User.tg_id == message.from_user.id)
         )).scalar_one_or_none()

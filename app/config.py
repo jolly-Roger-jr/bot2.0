@@ -1,8 +1,15 @@
-import os
-from dotenv import load_dotenv
+# app/config.py
 
-load_dotenv()
+from pydantic_settings import BaseSettings
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-TIMEZONE = os.getenv("TIMEZONE", "Europe/Belgrade")
+
+class Settings(BaseSettings):
+    bot_token: str
+    database_url: str
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+
+settings = Settings()

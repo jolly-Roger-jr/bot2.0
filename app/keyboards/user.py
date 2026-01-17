@@ -1,97 +1,60 @@
-# app/keyboards/user.py
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from typing import List
+from app.callbacks import CB
 
 
-def quantity_keyboard(
-    product_id: int,
-    product_name: str,
-    category_name: str,
-    price: float,
-    current_qty: int = 1
-) -> InlineKeyboardMarkup:
-    """
-    Клавиатура выбора количества и добавления в корзину.
-    Показывается условия: цена на единицу и итог.
-    """
-    total = current_qty * price
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="−",
-                    callback_data=f"qty:{product_id}:dec:{category_name}"
-                ),
-                InlineKeyboardButton(
-                    text=str(current_qty),
-                    callback_data="qty:noop"
-                ),
-                InlineKeyboardButton(
-                    text="+",
-                    callback_data=f"qty:{product_id}:inc:{category_name}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=(
-                        f"Добавить в корзину "
-                        f"({current_qty} x {price} RSD = {total} RSD)"
-                    ),
-                    callback_data=f"cart:add:{product_id}:{current_qty}:{category_name}"
-                ),
-                InlineKeyboardButton(
-                    text="⬅ Назад к товарам",
-                    callback_data=f"back:category:{category_name}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⬅ Назад к категориям",
-                    callback_data="back:categories"
-                ),
-            ],
-        ]
-    )
-    return kb
-
-
-async def categories_keyboard(categories: list[str]) -> InlineKeyboardMarkup:
-    """
-    Клавиатура с кнопками категорий.
-    Вход: список названий категорий.
-    """
+def categories_keyboard(categories: List[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=cat,
-                    callback_data=f"category:{cat}"
-                )
-            ]
+            [InlineKeyboardButton(text=cat, callback_data=f"{CB.CATEGORY}:{cat}")]
             for cat in categories
         ]
     )
 
 
-async def products_keyboard(
-    products: list[dict],
-    category_name: str
-) -> InlineKeyboardMarkup:
-    """
-    Клавиатура товаров данной категории.
-    products: список словарей с keys=id,name,price,description
-    """
-    kb = InlineKeyboardMarkup(
+def products_keyboard(products, category_name: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=(
-                        f"{p['name']} — {p['price']} RSD\n"
-                        f"{p['description']}"
-                    ),
-                    callback_data=f"product:{p['id']}:{category_name}"
+                    text=f"{p.name} — {int(p.price)} RSD",
+                    callback_data=f"{CB.PRODUCT}:{p.id}:{category_name}"
                 )
             ]
             for p in products
         ]
     )
-    return kb
+
+
+def quantity_keyboard(product_id: int, category: str, price: float, qty: int = 1):
+    total = int(price * qty)
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton("−", callback_data=f"{CB.QTY}:{product_id}:dec:{category}"),
+                InlineKeyboardButton(str(qty), callback_data="noop"),
+                InlineKeyboardButton("+", callback_data=f"{CB.QTY}:{product_id}:inc:{category}")
+            ],
+            [
+                InlineKeyboardButton(
+                    f"Добавить в корзину ({total} RSD)",
+                    callback_data=f"{CB.CART_ADD}:{product_id}:{qty}:{category}"
+                )
+            ],
+            [
+                InlineKeyboardButton("⬅ Назад", callback_data=f"{CB.CATEGORY}:{category}")
+            ]
+        ]
+    )
+
+
+def cart_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton("🗑 Очистить корзину", callback_data=CB.CART_CLEAR),
+                InlineKeyboardButton("✅ Оформить заказ", callback_data=CB.ORDER_CONFIRM)
+            ]
+        ]
+    )

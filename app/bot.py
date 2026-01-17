@@ -1,28 +1,23 @@
-import logging
-import os
 import asyncio
-from dotenv import load_dotenv
-from aiogram import Bot
-from aiogram.client.bot import DefaultBotProperties
-from app.dispatcher import dp
+import logging
+from aiogram import Bot, Dispatcher
+from app.config import BOT_TOKEN
+from app.handlers.user import router as user_router
+from app.db.engine import engine
+from app.db.base import Base
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-)
-load_dotenv()
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("Установите BOT_TOKEN в переменных окружения")
-
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML")
-)
+TOKEN = "PUT_YOUR_TOKEN_HERE"
 
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
+    logging.basicConfig(level=logging.INFO)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    bot = Bot(BOT_TOKEN)
+    dp = Dispatcher()
+    dp.include_router(user_router)
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

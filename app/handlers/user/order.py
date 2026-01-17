@@ -1,63 +1,59 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
-from sqlalchemy import select
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 
-from app.db.session import SessionLocal
-from app.db.models import User, Order, OrderItem
-from app.services.cart import get_cart, clear_cart
-from app.services.notifications import notify_admin
+from app.services.cart import get_cart_items, clear_cart
+from app.keyboards.user import confirm_keyboard
 
 router = Router()
 
-@router.callback_query(F.data == "order")
-async def create_order(call: CallbackQuery, bot):
-    user_id = call.from_user.id
 
-    async with SessionLocal() as session:
-        user = (await session.execute(
-            select(User).where(User.tg_id == user_id)
-        )).scalar_one_or_none()
+class Checkout(StatesGroup):
+    waiting_address = State()
+    confirmation = State()
 
-        if not user or not user.phone:
-            await call.message.answer(
-                "📞 Пожалуйста, отправьте номер телефона для оформления заказа"
-            )
-            return
 
-        cart = await get_cart(user_id)
-        if not cart:
-            await call.answer("Корзина пуста")
-            return
+@router.callback_query(F.data == "cart:checkout")
+async def start_checkout(callback: CallbackQuery, state: FSMContext):
+    cart = await get_cart_items(str(callback.from_user.id))
+    if not cart:
+        await callback.answer("Корзина пуста", show_alert=True)
+        return
 
-        total = 0
-        order = Order(user_id=user.id, total_price=0)
-        session.add(order)
-        await session.flush()
+    await state.set_state(Checkout.waiting_address)
+    await callback.message.answer("📦 Введите адрес доставки:")
+    await callback.answer()
 
-        text = "🛎️ *Новый заказ Barkery*\n\n"
 
-        for item, product in cart:
-            price = (item.grams // 100) * product.price_per_100g
-            total += price
+@router.message(Checkout.waiting_address)
+async def process_address(message: Message, state: FSMContext):
+    await state.update_data(address=message.text)
 
-            session.add(OrderItem(
-                order_id=order.id,
-                product_name=product.name,
-                grams=item.grams,
-                price=price
-            ))
+    cart = await get_cart_items(str(message.from_user.id))
+    total = sum(item["total"] for item in cart)
 
-            text += f"• {product.name} — {item.grams} г = {price} RSD\n"
+    lines = ["🧾 <b>Подтверждение заказа</b>\n"]
+    for item in cart:
+        lines.append(f"{item['name']} × {item['qty']}")
 
-        order.total_price = total
-        await session.commit()
-        await clear_cart(user_id)
+    lines.append(f"\n📍 Адрес: {message.text}")
+    lines.append(f"\n💰 Итого: {int(total)} RSD")
 
-    text += (
-        f"\n💰 *Итого:* {total} RSD\n\n"
-        f"👤 Клиент: @{call.from_user.username or '—'}\n"
-        f"📞 Телефон: {user.phone}"
-    )
+    await state.set_state(Checkout.confirmation)
+    await message.answer("\n".join(lines), reply_markup=confirm_keyboard())
 
-    await notify_admin(bot, text)
-    await call.message.edit_text("✅ Заказ оформлен! Мы скоро свяжемся с вами 🐾")
+
+@router.callback_query(Checkout.confirmation, F.data == "order:confirm")
+async def confirm_order(callback: CallbackQuery, state: FSMContext):
+    await clear_cart(str(callback.from_user.id))
+    await state.clear()
+    await callback.message.answer("✅ Заказ оформлен! Мы скоро свяжемся с вами.")
+    await callback.answer()
+
+
+@router.callback_query(Checkout.confirmation, F.data == "order:cancel")
+async def cancel_order(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer("❌ Заказ отменён")
+    await callback.answer()

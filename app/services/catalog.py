@@ -1,41 +1,12 @@
-# app/services/catalog.py
-from sqlalchemy import select
-from app.db.engine import SessionLocal
-from app.db.models import Category, Product
-
+from app.db.session import get_session
+from app.repositories import catalog as repo
+from app.schemas.product import ProductDTO
 
 async def get_categories() -> list[str]:
-    """
-    Вернуть список названий категорий.
-    """
-    async with SessionLocal() as session:
-        result = await session.execute(select(Category.name))
-        return [row[0] for row in result.fetchall()]
+    async for session in get_session():
+        return await repo.get_categories(session)
 
-
-async def get_products(category_name: str) -> list[dict]:
-    """
-    Вернуть список товаров заданной категории.
-    Каждый товар — словарь с полями id, name, price, description.
-    """
-    async with SessionLocal() as session:
-        result = await session.execute(
-            select(
-                Product.id,
-                Product.name,
-                Product.price,
-                Product.description
-            ).join(Category).where(Category.name == category_name)
-        )
-        rows = result.fetchall()
-
-    # Приводим Decimal -> float, описание может быть None
-    return [
-        {
-            "id": row[0],
-            "name": row[1],
-            "price": float(row[2]),
-            "description": row[3] or ""
-        }
-        for row in rows
-    ]
+async def get_products_by_category(category_name: str) -> list[ProductDTO]:
+    async for session in get_session():
+        products = await repo.get_products_by_category(session, category_name)
+        return [ProductDTO.from_orm(p) for p in products]

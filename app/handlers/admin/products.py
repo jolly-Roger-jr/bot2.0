@@ -17,7 +17,7 @@ async def add_product(message: Message):
         _, data = message.text.split(" ", 1)
         name, desc, price, cat_id = [x.strip() for x in data.split("|")]
 
-        async with SessionLocal() as session:
+        async for session in get_session():
             session.add(Product(
                 name=name,
                 description=desc,
