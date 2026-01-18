@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from app.models.product import Product
+from app.db.models import Product
 
 
 @dataclass
@@ -11,9 +11,12 @@ class ProductDTO:
 
     @classmethod
     def from_orm(cls, product: Product) -> "ProductDTO":
+        # ✅ Обрабатываем возможные None значения
+        description = product.description if product.description else ""
+
         return cls(
             id=product.id,
             name=product.name,
-            description=product.description,
-            price=product.price,
+            description=description,
+            price=float(product.price)  # ✅ Явно преобразуем в float
         )

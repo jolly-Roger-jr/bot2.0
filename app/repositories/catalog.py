@@ -1,7 +1,9 @@
+# app/repositories/catalog.py
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.category import Category
-from app.models.product import Product
+from app.db.models import Category, Product  # ✅ Исправленный импорт
+
 
 async def get_categories(session: AsyncSession) -> list[str]:
     result = await session.scalars(select(Category.name))

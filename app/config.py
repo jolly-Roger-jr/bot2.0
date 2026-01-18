@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     bot_token: str
     database_url: str
+    admin_id: int
+    timezone: str = "Europe/Belgrade"
 
     class Config:
         env_file = ".env"

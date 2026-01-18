@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.cart_item import CartItem
+from app.db.models import CartItem  # ✅ Меняем импорт
+
 
 async def get_cart(session: AsyncSession, user_id: int):
     result = await session.scalars(

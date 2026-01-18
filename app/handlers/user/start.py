@@ -7,7 +7,6 @@ from app.keyboards.user import categories_keyboard
 
 router = Router()
 
-
 @router.message(CommandStart())
 async def start(message: Message):
     categories = await catalog.get_categories()

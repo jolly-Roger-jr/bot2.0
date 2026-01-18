@@ -1,24 +1,63 @@
+# app/bot.py - ОБНОВЛЕННЫЙ
+
 import asyncio
 import logging
+import os
 from aiogram import Bot, Dispatcher
-from app.config import BOT_TOKEN
-from app.handlers.user import router as user_router
-from app.db.engine import engine
-from app.db.base import Base
+from aiogram.fsm.storage.memory import MemoryStorage
 
-TOKEN = "PUT_YOUR_TOKEN_HERE"
+from app.config import settings
+from app.handlers.user import router as user_router
+from app.handlers.admin import router as admin_router
+from app.db.engine import engine
+from app.db.models import Base
+from app.scheduler import start_scheduler, setup_backup_schedule
+
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    # Настройка логирования
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    logger = logging.getLogger(__name__)
+
+    # Инициализация БД (создаем только если не существует)
+    logger.info("Инициализация базы данных...")
 
     async with engine.begin() as conn:
+        # Создаем таблицы только если они не существуют
         await conn.run_sync(Base.metadata.create_all)
 
-    bot = Bot(BOT_TOKEN)
-    dp = Dispatcher()
-    dp.include_router(user_router)
+    logger.info("✅ База данных проверена/создана")
 
-    await dp.start_polling(bot)
+    # Настройка и запуск планировщика резервного копирования
+    logger.info("Настройка планировщика резервного копирования...")
+    setup_backup_schedule()
+    start_scheduler()
+    logger.info("✅ Планировщик запущен")
+
+    # Инициализация бота
+    bot = Bot(token=settings.bot_token)
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
+
+    # Регистрация роутеров
+    dp.include_router(user_router)
+    dp.include_router(admin_router)
+
+    logger.info("🚀 Бот запущен и готов к работе")
+    logger.info(f"⏰ Резервное копирование настроено на 4:00 ({settings.timezone})")
+
+    try:
+        await dp.start_polling(bot)
+    finally:
+        # Очистка при завершении
+        logger.info("Завершение работы бота...")
+        from app.scheduler import stop_scheduler
+        stop_scheduler()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

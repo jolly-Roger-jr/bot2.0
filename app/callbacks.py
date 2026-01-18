@@ -1,5 +1,3 @@
-# app/callbacks.py
-
 class CB:
     CATEGORY = "category"
     PRODUCT = "product"
