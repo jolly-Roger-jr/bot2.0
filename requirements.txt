@@ -1,11 +1,21 @@
-aiogram==3.4.1
-SQLAlchemy==2.0.25
+# Основные
+aiogram==3.10.0
+aiohttp==3.9.0
+aiofiles==23.2.1
 aiosqlite==0.19.0
-APScheduler==3.10.4
+
+# База данных
+SQLAlchemy==2.0.25
+alembic==1.13.1
+
+# Конфигурация
+pydantic==2.8.2
+pydantic-settings==2.12.0
 python-dotenv==1.0.1
-aiohttp~=3.9.0
-aiofiles~=23.2.1
-pydantic<2.6,>=2.4.1
-magic-filter>=1.0.12,<1.1
-typing-extensions<=5.0,>=4.7.0
-tzlocal>=2.0
+
+# Планировщик
+APScheduler==3.10.4
+
+# Время
+pytz==2025.2
+tzlocal==5.3.1

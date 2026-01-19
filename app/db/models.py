@@ -83,3 +83,19 @@ class OrderItem(Base):
     # Связи
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
+
+    class User(Base):
+        __tablename__ = "users"
+
+        id = Column(Integer, primary_key=True)
+        telegram_id = Column(String, unique=True, nullable=False, index=True)
+        username = Column(String, nullable=True)
+        full_name = Column(String, nullable=True)
+        phone = Column(String, nullable=True)
+        address = Column(Text, nullable=True)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        last_active = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+        # Временные отношения - пока пустые
+        # cart_items = relationship("CartItem", back_populates="user", cascade="all, delete-orphan")
+        # orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")

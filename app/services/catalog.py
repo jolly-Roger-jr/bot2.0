@@ -1,29 +1,45 @@
-# app/services/catalog.py
-
-from app.db.session import get_session
-from app.db.models import Product, Category
-from app.schemas.product import ProductDTO
+# app/services/catalog.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
 from sqlalchemy import select
+from app.db.session import get_session  # ✅ Явный импорт
+from app.db.models import Category, Product
+from app.schemas.product import ProductDTO
+
 
 async def get_categories() -> list[str]:
-    async for session in get_session():
-        result = await session.scalars(select(Category.name))
-        return result.all()
+    """Получить список категорий"""
+    async for session in get_session():  # ✅ Используем импортированную функцию
+        try:
+            result = await session.execute(select(Category.name))
+            categories = result.scalars().all()
+            return categories if categories else []
+        except Exception as e:
+            print(f"❌ Ошибка при получении категорий: {e}")
+            return []
+
 
 async def get_products_by_category(category_name: str) -> list[ProductDTO]:
-    async for session in get_session():
-        stmt = (
-            select(Product)
-            .join(Category)
-            .where(Category.name == category_name)
-        )
-        result = await session.scalars(stmt)
-        products = result.all()
-        return [ProductDTO.from_orm(p) for p in products]
+    """Получить товары по категории"""
+    async for session in get_session():  # ✅ Используем импортированную функцию
+        try:
+            stmt = (
+                select(Product)
+                .join(Category)
+                .where(Category.name == category_name)
+            )
+            result = await session.scalars(stmt)
+            products = result.all()
+            return [ProductDTO.from_orm(p) for p in products] if products else []
+        except Exception as e:
+            print(f"❌ Ошибка при получении товаров категории '{category_name}': {e}")
+            return []
+
 
 async def get_product(product_id: int) -> ProductDTO:
-    async for session in get_session():
-        product = await session.get(Product, product_id)
-        if product:
-            return ProductDTO.from_orm(product)
-        return None
+    """Получить товар по ID"""
+    async for session in get_session():  # ✅ Используем импортированную функцию
+        try:
+            product = await session.get(Product, product_id)
+            return ProductDTO.from_orm(product) if product else None
+        except Exception as e:
+            print(f"❌ Ошибка при получении товара #{product_id}: {e}")
+            return None

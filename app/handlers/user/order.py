@@ -1,17 +1,16 @@
-# app/handlers/user/order.py - ПОЛНОСТЬЮ ПЕРЕРАБОТАННЫЙ
-
+# app/handlers/user/order.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command, StateFilter  # ДОБАВЛЕНО StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from app.callbacks import CB
-from app.services.cart import get_cart_items, clear_cart, get_cart_total, validate_cart_for_order  # ДОБАВЛЕНО
-from app.services.notifications import notify_admin
+from app.services.cart import get_cart_items, clear_cart, get_cart_total, validate_cart_for_order
+from app.services.notifications import notify_admin_new_order
 from app.keyboards.user import confirm_keyboard, back_to_cart_keyboard
 from app.db.session import get_session
-from app.db.models import Order, OrderItem, Product
+from app.db.models import Order, OrderItem, Product, User
 
 router = Router()
 
@@ -22,7 +21,24 @@ class OrderForm(StatesGroup):
     waiting_phone = State()
 
 
-# app/handlers/user/order.py - ОБНОВЛЕННЫЙ (ДОБАВИТЬ В НАЧАЛО)
+async def get_or_create_user(session, telegram_id: int, username: str = None, full_name: str = None) -> User:
+    """Получить или создать пользователя"""
+    result = await session.execute(
+        select(User).where(User.telegram_id == str(telegram_id))
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        user = User(
+            telegram_id=str(telegram_id),
+            username=username,
+            full_name=full_name
+        )
+        session.add(user)
+        await session.flush()
+
+    return user
+
 
 @router.callback_query(F.data == "cart:check_availability")
 async def check_cart_availability(callback: CallbackQuery):
@@ -177,7 +193,7 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
     phone = data.get("phone", "")
     total_amount = data.get("total_amount", 0)
 
-    if not items or not address:
+    if not items or not address or not phone:
         await callback.answer("❌ Данные заказа утеряны", show_alert=True)
         await state.clear()
         return
@@ -185,9 +201,30 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
     # Сохраняем заказ в БД
     async for session in get_session():
         try:
+            # Получаем или создаем пользователя
+            from sqlalchemy import select
+            result = await session.execute(
+                select(User).where(User.telegram_id == str(callback.from_user.id))
+            )
+            user = result.scalar_one_or_none()
+
+            if not user:
+                # Создаем пользователя
+                user = User(
+                    telegram_id=str(callback.from_user.id),
+                    username=callback.from_user.username,
+                    full_name=callback.from_user.full_name
+                )
+                session.add(user)
+                await session.flush()
+
+            # Обновляем контактные данные пользователя
+            user.phone = phone
+            user.address = address
+
             # Создаем заказ
             order = Order(
-                user_id=str(callback.from_user.id),
+                user_id=user.id,
                 address=address,
                 phone=phone,
                 customer_name=callback.from_user.full_name,
@@ -221,25 +258,22 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
             # Очищаем корзину
             await clear_cart(callback.from_user.id)
 
-            # Отправляем уведомление админу
-            admin_text = (
-                "🛒 <b>НОВЫЙ ЗАКАЗ #{}</b>\n\n"
-                "<b>Покупатель:</b> {} (@{})\n"
-                "<b>Телефон:</b> {}\n"
-                "<b>Адрес:</b> {}\n"
-                "<b>Сумма:</b> {} RSD\n\n"
-                "<b>Товары:</b>\n{}"
-            ).format(
-                order.id,
-                callback.from_user.full_name,
-                callback.from_user.username or "без username",
-                phone,
-                address,
-                int(total_amount),
-                "\n".join(f"• {item.product.name} - {item.quantity}г" for item in items if item.product)
-            )
+            # Формируем данные для уведомления админу
+            order_data = {
+                'order_id': order.id,
+                'user_info': {
+                    'id': callback.from_user.id,
+                    'name': callback.from_user.full_name,
+                    'username': callback.from_user.username
+                },
+                'items': items,
+                'total': total_amount,
+                'address': address,
+                'phone': phone
+            }
 
-            await notify_admin(bot, admin_text)
+            # Отправляем уведомление админу
+            await notify_admin_new_order(bot, order_data)
 
             # Сообщение пользователю
             await callback.message.answer(

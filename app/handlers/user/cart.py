@@ -1,4 +1,4 @@
-# app/handlers/user/cart.py - ОБНОВЛЕННЫЙ С УВЕДОМЛЕНИЯМИ
+# app/handlers/user/cart.py - ИСПРАВЛЕННЫЙ С УВЕДОМЛЕНИЯМИ
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
@@ -12,54 +12,11 @@ from app.services.cart import (
     get_cart_total,
     update_cart_item,
     remove_from_cart,
-    validate_cart_for_order  # ДОБАВЛЕНО
+    validate_cart_for_order
 )
 from app.keyboards.user import cart_keyboard, cart_item_management_keyboard
-from app.db.session import get_session  # ДОБАВЛЕНО
-from sqlalchemy import select  # ДОБАВЛЕНО
-from app.db.models import CartItem, Product  # ДОБАВЛЕНО
 
 router = Router()
-
-
-@router.callback_query(F.data.startswith(CB.CART_ADD))
-async def add_to_cart_cb(callback: CallbackQuery):
-    """Добавление товара в корзину с обработкой ошибок"""
-    # Формат: "cart:add:{product_id}:{qty}:{category}"
-    parts = callback.data.split(":")
-    if len(parts) != 5:
-        await callback.answer("❌ Ошибка формата", show_alert=True)
-        return
-
-    _, _, product_id_str, qty_str, _ = parts
-
-    try:
-        product_id = int(product_id_str)
-        quantity = int(qty_str)
-    except ValueError:
-        await callback.answer("❌ Ошибка в данных", show_alert=True)
-        return
-
-    # Добавляем в корзину с проверкой
-    result = await add_to_cart(
-        user_id=callback.from_user.id,
-        product_id=product_id,
-        quantity=quantity
-    )
-
-    if result['success']:
-        await callback.answer(f"✅ Добавлено {quantity}г")
-    else:
-        error_msg = result.get('error', 'Неизвестная ошибка')
-
-        # Предлагаем добавить доступное количество
-        if 'available_qty' in result and result['available_qty'] > 0:
-            await callback.answer(
-                f"⚠️ {error_msg}. Добавить {result['available_qty']}г?",
-                show_alert=True
-            )
-        else:
-            await callback.answer(f"❌ {error_msg}", show_alert=True)
 
 
 @router.message(Command("cart"))
@@ -109,17 +66,44 @@ async def show_cart_cmd(message: Message):
     await message.answer(text, parse_mode="Markdown", reply_markup=cart_keyboard())
 
 
-@router.callback_query(F.data == CB.CART_CLEAR)
-async def clear_cart_cb(callback: CallbackQuery):
-    """Очистка корзины"""
-    result = await clear_cart(callback.from_user.id)
+@router.callback_query(F.data.startswith(CB.CART_ADD))
+async def add_to_cart_cb(callback: CallbackQuery):
+    """Добавление товара в корзину с обработкой ошибок"""
+    # Формат: "cart:add:{product_id}:{qty}:{category}"
+    parts = callback.data.split(":")
+    if len(parts) != 5:
+        await callback.answer("❌ Ошибка формата", show_alert=True)
+        return
+
+    _, _, product_id_str, qty_str, _ = parts
+
+    try:
+        product_id = int(product_id_str)
+        quantity = int(qty_str)
+    except ValueError:
+        await callback.answer("❌ Ошибка в данных", show_alert=True)
+        return
+
+    # Добавляем в корзину с проверкой
+    result = await add_to_cart(
+        user_id=callback.from_user.id,
+        product_id=product_id,
+        quantity=quantity
+    )
 
     if result['success']:
-        await callback.message.edit_text("🗑 Корзина очищена")
+        await callback.answer(f"✅ Добавлено {quantity}г")
     else:
-        await callback.answer("❌ Ошибка при очистке корзины", show_alert=True)
+        error_msg = result.get('error', 'Неизвестная ошибка')
 
-    await callback.answer()
+        # Предлагаем добавить доступное количество
+        if 'available_qty' в результате and result['available_qty'] > 0:
+            await callback.answer(
+                f"⚠️ {error_msg}. Добавить {result['available_qty']}г?",
+                show_alert=True
+            )
+        else:
+            await callback.answer(f"❌ {error_msg}", show_alert=True)
 
 
 @router.callback_query(F.data == "show_cart")
@@ -155,6 +139,19 @@ async def show_cart_from_button(callback: CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data == CB.CART_CLEAR)
+async def clear_cart_cb(callback: CallbackQuery):
+    """Очистка корзины"""
+    result = await clear_cart(callback.from_user.id)
+
+    if result['success']:
+        await callback.message.edit_text("🗑 Корзина очищена")
+    else:
+        await callback.answer("❌ Ошибка при очистке корзины", show_alert=True)
+
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("cart:update:"))
 async def update_cart_item_cb(callback: CallbackQuery):
     """Обновление количества товара в корзине"""
@@ -185,7 +182,7 @@ async def update_cart_item_cb(callback: CallbackQuery):
         await show_cart_from_button(callback)
     else:
         error_msg = result.get('error', 'Неизвестная ошибка')
-        if 'available_qty' in result:
+        if 'available_qty' в результате:
             await callback.answer(
                 f"❌ {error_msg}. Доступно: {result['available_qty']}г",
                 show_alert=True
@@ -216,38 +213,25 @@ async def manage_cart_item(callback: CallbackQuery):
     """Управление конкретным товаром в корзине"""
     product_id = int(callback.data.split(":")[2])
 
-    # Получаем информацию о товаре в корзине
-    async for session in get_session():
-        from sqlalchemy import select
-        from app.db.models import CartItem, Product
+    # Используем существующий сервис
+    items = await get_cart_items(callback.from_user.id)
 
-        result = await session.execute(
-            select(CartItem, Product)
-            .join(Product, Product.id == CartItem.product_id)
-            .where(
-                CartItem.user_id == str(callback.from_user.id),
-                CartItem.product_id == product_id
-            )
-        )
+    for item in items:
+        if item.product_id == product_id and item.product:
+            # Показываем меню управления
+            text = f"✏️ *Управление товаром:* {item.product.name}\n\n"
+            text += f"*Количество в корзине:* {item.quantity}г\n"
+            text += f"*Цена:* {item.product.price} RSD/100г\n"
+            text += f"*Доступно:* {item.product.stock_grams}г\n"
+            text += f"*Стоимость:* {item.product.price * item.quantity / 100:.0f} RSD"
 
-        data = result.first()
-        if not data:
-            await callback.answer("❌ Товар не найден в корзине", show_alert=True)
+            keyboard = cart_item_management_keyboard(product_id, item.quantity, item.product.stock_grams)
+
+            await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+            await callback.answer()
             return
 
-        cart_item, product = data
-
-        # Показываем меню управления
-        text = f"✏️ *Управление товаром:* {product.name}\n\n"
-        text += f"*Количество в корзине:* {cart_item.quantity}г\n"
-        text += f"*Цена:* {product.price} RSD/100г\n"
-        text += f"*Доступно:* {product.stock_grams}г\n"
-        text += f"*Стоимость:* {product.price * cart_item.quantity / 100:.0f} RSD"
-
-        keyboard = cart_item_management_keyboard(product_id, cart_item.quantity, product.stock_grams)
-
-        await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
-        await callback.answer()
+    await callback.answer("❌ Товар не найден в корзине", show_alert=True)
 
 
 @router.callback_query(F.data == "cart:check_availability")
