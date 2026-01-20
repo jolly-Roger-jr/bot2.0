@@ -1,5 +1,4 @@
-# app/handlers/user/cart.py - ИСПРАВЛЕННЫЙ С УВЕДОМЛЕНИЯМИ
-
+# app/handlers/user/cart.py - ПОЛНЫЙ ФАЙЛ
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import Command
@@ -56,10 +55,10 @@ async def show_cart_cmd(message: Message):
     text = "🛒 *Ваша корзина:*\n\n"
 
     for item in items:
-        if item.product:
-            subtotal = item.product.price * item.quantity / 100
-            text += f"• *{item.product.name}*\n"
-            text += f"  {item.quantity}г × {item.product.price} RSD/100г = {int(subtotal)} RSD\n\n"
+        if 'product_name' in item:
+            subtotal = item['price_per_100g'] * item['quantity'] / 100
+            text += f"• *{item['product_name']}*\n"
+            text += f"  {item['quantity']}г × {item['price_per_100g']} RSD/100г = {int(subtotal)} RSD\n\n"
 
     text += f"*Итого:* {int(total)} RSD"
 
@@ -69,7 +68,6 @@ async def show_cart_cmd(message: Message):
 @router.callback_query(F.data.startswith(CB.CART_ADD))
 async def add_to_cart_cb(callback: CallbackQuery):
     """Добавление товара в корзину с обработкой ошибок"""
-    # Формат: "cart:add:{product_id}:{qty}:{category}"
     parts = callback.data.split(":")
     if len(parts) != 5:
         await callback.answer("❌ Ошибка формата", show_alert=True)
@@ -84,7 +82,6 @@ async def add_to_cart_cb(callback: CallbackQuery):
         await callback.answer("❌ Ошибка в данных", show_alert=True)
         return
 
-    # Добавляем в корзину с проверкой
     result = await add_to_cart(
         user_id=callback.from_user.id,
         product_id=product_id,
@@ -93,13 +90,22 @@ async def add_to_cart_cb(callback: CallbackQuery):
 
     if result['success']:
         await callback.answer(f"✅ Добавлено {quantity}г")
+
+        # Возвращаем к категории товаров
+        from app.handlers.user.catalog import show_products
+        fake_callback = type('FakeCallback', (), {
+            'data': f"category:{parts[4]}",
+            'from_user': callback.from_user,
+            'message': callback.message,
+            'answer': callback.answer
+        })()
+
+        await show_products(fake_callback)
     else:
         error_msg = result.get('error', 'Неизвестная ошибка')
-
-        # Предлагаем добавить доступное количество
-        if 'available_qty' в результате and result['available_qty'] > 0:
+        if 'available_qty' in result and result['available_qty'] > 0:
             await callback.answer(
-                f"⚠️ {error_msg}. Добавить {result['available_qty']}г?",
+                f"⚠️ {error_msg}. Доступно {result['available_qty']}г",
                 show_alert=True
             )
         else:
@@ -128,10 +134,10 @@ async def show_cart_from_button(callback: CallbackQuery):
     text = "🛒 *Ваша корзина:*\n\n"
 
     for item in items:
-        if item.product:
-            subtotal = item.product.price * item.quantity / 100
-            text += f"• *{item.product.name}*\n"
-            text += f"  {item.quantity}г × {item.product.price} RSD/100г = {int(subtotal)} RSD\n\n"
+        if 'product_name' in item:
+            subtotal = item['price_per_100g'] * item['quantity'] / 100
+            text += f"• *{item['product_name']}*\n"
+            text += f"  {item['quantity']}г × {item['price_per_100g']} RSD/100г = {int(subtotal)} RSD\n\n"
 
     text += f"*Итого:* {int(total)} RSD"
 
@@ -154,8 +160,7 @@ async def clear_cart_cb(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("cart:update:"))
 async def update_cart_item_cb(callback: CallbackQuery):
-    """Обновление количества товара в корзине"""
-    # Формат: "cart:update:{product_id}:{new_qty}"
+    """Обновление количества товара в корзине с шагом 100г"""
     parts = callback.data.split(":")
     if len(parts) != 4:
         await callback.answer("❌ Ошибка формата", show_alert=True)
@@ -170,6 +175,13 @@ async def update_cart_item_cb(callback: CallbackQuery):
         await callback.answer("❌ Ошибка в данных", show_alert=True)
         return
 
+    # Проверяем, чтобы количество было кратно 100г и не меньше 100г
+    if new_qty < 100:
+        new_qty = 100
+
+    if new_qty % 100 != 0:
+        new_qty = (new_qty // 100) * 100
+
     result = await update_cart_item(
         user_id=callback.from_user.id,
         product_id=product_id,
@@ -178,11 +190,10 @@ async def update_cart_item_cb(callback: CallbackQuery):
 
     if result['success']:
         await callback.answer(f"✅ Обновлено: {new_qty}г")
-        # Обновляем отображение корзины
         await show_cart_from_button(callback)
     else:
         error_msg = result.get('error', 'Неизвестная ошибка')
-        if 'available_qty' в результате:
+        if 'available_qty' in result:
             await callback.answer(
                 f"❌ {error_msg}. Доступно: {result['available_qty']}г",
                 show_alert=True
@@ -213,21 +224,25 @@ async def manage_cart_item(callback: CallbackQuery):
     """Управление конкретным товаром в корзине"""
     product_id = int(callback.data.split(":")[2])
 
-    # Используем существующий сервис
     items = await get_cart_items(callback.from_user.id)
 
     for item in items:
         if item.product_id == product_id and item.product:
-            # Показываем меню управления
-            text = f"✏️ *Управление товаром:* {item.product.name}\n\n"
-            text += f"*Количество в корзине:* {item.quantity}г\n"
-            text += f"*Цена:* {item.product.price} RSD/100г\n"
-            text += f"*Доступно:* {item.product.stock_grams}г\n"
-            text += f"*Стоимость:* {item.product.price * item.quantity / 100:.0f} RSD"
+            keyboard = cart_item_management_keyboard(
+                product_id,
+                item.quantity,
+                item.product.stock_grams
+            )
 
-            keyboard = cart_item_management_keyboard(product_id, item.quantity, item.product.stock_grams)
-
-            await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+            await callback.message.answer(
+                f"✏️ *Управление товаром:* {item.product.name}\n\n"
+                f"*Количество в корзине:* {item.quantity}г\n"
+                f"*Цена:* {item.product.price} RSD/100г\n"
+                f"*Доступно:* {item.product.stock_grams}г\n"
+                f"*Стоимость:* {item.product.price * item.quantity / 100:.0f} RSD",
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
             await callback.answer()
             return
 
@@ -241,7 +256,6 @@ async def check_cart_availability(callback: CallbackQuery):
 
     if not result['success']:
         if 'unavailable_items' in result:
-            # Показываем какие товары недоступны
             text = "⚠️ *Проверка наличия*\n\n"
             text += "Обнаружены проблемы:\n"
 

@@ -1,16 +1,27 @@
+# app/handlers/user/qty.py - СОЗДАЙТЕ ЭТОТ ФАЙЛ
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from app.callbacks import CB
+import logging
 
+from app.services import catalog
+from app.keyboards.user import quantity_keyboard
+
+logger = logging.getLogger(__name__)
 router = Router()
 
 
-@router.callback_query(F.data.startswith(CB.QTY))
-async def handle_quantity(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("qty:"))
+async def handle_quantity_change(callback: CallbackQuery):
+    """Обработка изменения количества товара с шагом 100г"""
+    logger.info(f"📨 Получен callback qty: {callback.data}")
+
     # Формат: "qty:{product_id}:{action}:{category}:{current_qty}"
     parts = callback.data.split(":")
+    logger.info(f"📊 Частей в callback: {len(parts)} -> {parts}")
+
     if len(parts) != 5:
-        await callback.answer("❌ Ошибка")
+        logger.error(f"❌ Неправильный формат: {len(parts)} частей вместо 5")
+        await callback.answer("❌ Ошибка формата", show_alert=True)
         return
 
     _, product_id_str, action, category, current_qty_str = parts
@@ -18,48 +29,51 @@ async def handle_quantity(callback: CallbackQuery):
     try:
         product_id = int(product_id_str)
         current_qty = int(current_qty_str)
-    except ValueError:
-        await callback.answer("❌ Ошибка в данных")
+        logger.info(f"📦 Парсинг: product_id={product_id}, action={action}, category={category}, qty={current_qty}")
+    except ValueError as e:
+        logger.error(f"❌ Ошибка парсинга: {e}")
+        await callback.answer("❌ Ошибка в данных", show_alert=True)
         return
 
-    # Изменяем количество
-    if action == "inc":
-        new_qty = current_qty + 1
-    elif action == "dec":
-        new_qty = max(1, current_qty - 1)  # Минимум 1
+    # Изменяем количество с шагом 100г
+    if action == "dec_100":
+        new_qty = max(100, current_qty - 100)  # Минимум 100г
+        logger.info(f"➖ Уменьшение: {current_qty} -> {new_qty}")
+    elif action == "inc_100":
+        new_qty = current_qty + 100
+        logger.info(f"➕ Увеличение: {current_qty} -> {new_qty}")
     else:
-        await callback.answer("❌ Неизвестное действие")
+        logger.error(f"❌ Неизвестное действие: {action}")
+        await callback.answer("❌ Неизвестное действие", show_alert=True)
         return
 
-    # Проверяем изменилось ли количество
-    if new_qty == current_qty:
-        await callback.answer(f"Минимальное количество: 1")
-        return
-
-    # Обновляем сообщение с новым количеством
-    from app.keyboards.user import quantity_keyboard
-    from app.services.catalog import get_product
-
-    product = await get_product(product_id)
+    # Получаем информацию о товаре
+    product = await catalog.get_product(product_id)
     if not product:
-        await callback.answer("❌ Товар не найден")
+        logger.error(f"❌ Товар не найден: {product_id}")
+        await callback.answer("❌ Товар не найден", show_alert=True)
         return
 
-    # Создаем новую клавиатуру
-    new_keyboard = quantity_keyboard(
-        product_id=product_id,
-        category=category,
-        price=product.price,
-        qty=new_qty
-    )
+    logger.info(f"✅ Товар найден: {product.name}, остаток: {product.stock_grams}г")
 
+    # Проверяем доступное количество
+    if new_qty > product.stock_grams:
+        logger.warning(f"⚠️ Недостаточно: нужно {new_qty}, есть {product.stock_grams}")
+        await callback.answer(f"❌ Доступно только {product.stock_grams}г", show_alert=True)
+        return
+
+    # Обновляем клавиатуру с новым количеством
     try:
-        # Пытаемся обновить клавиатуру
-        await callback.message.edit_reply_markup(reply_markup=new_keyboard)
-        await callback.answer(f"Количество: {new_qty}")
+        logger.info(f"🔄 Обновление клавиатуры: {new_qty}г")
+        await callback.message.edit_reply_markup(
+            reply_markup=quantity_keyboard(product_id, category, product.price, new_qty)
+        )
+        logger.info(f"✅ Клавиатура обновлена")
+        await callback.answer(f"Количество: {new_qty}г")
     except Exception as e:
-        # Если ошибка "message not modified" - игнорируем
-        if "message is not modified" in str(e):
-            await callback.answer(f"Количество: {new_qty}")
+        error_msg = str(e)
+        logger.error(f"❌ Ошибка обновления: {error_msg}")
+        if "message is not modified" in error_msg:
+            await callback.answer(f"Количество: {new_qty}г")
         else:
-            await callback.answer("❌ Ошибка обновления")
+            await callback.answer("❌ Ошибка обновления", show_alert=True)

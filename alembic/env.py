@@ -16,8 +16,10 @@ from app.db.models import Base
 # this is the Alembic Config object
 config = context.config
 
-# ✅ ИСПОЛЬЗУЕМ ЕДИНЫЙ DATABASE_URL ИЗ НАСТРОЕК
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# ✅ ИСПОЛЬЗУЕМ СИНХРОННЫЙ SQLite ДЛЯ МИГРАЦИЙ
+# Заменяем aiosqlite на sqlite для Alembic
+sync_database_url = settings.database_url.replace("sqlite+aiosqlite://", "sqlite://")
+config.set_main_option("sqlalchemy.url", sync_database_url)
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:

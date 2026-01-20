@@ -1,4 +1,4 @@
-# app/keyboards/admin.py - КАНОНИЧНАЯ ВЕРСИЯ
+# app/keyboards/admin.py - ДОПОЛНЕННАЯ ВЕРСИЯ
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
@@ -17,6 +17,20 @@ def admin_menu():
             [
                 InlineKeyboardButton(text="📂 Добавить категорию", callback_data="admin_add_category")
             ]
+        ]
+    )
+
+
+def stock_management_menu():
+    """Меню управления остатками товаров"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📦 Просмотреть остатки", callback_data="stock:view")],
+            [InlineKeyboardButton(text="➕ Добавить остатки", callback_data="stock:add")],
+            [InlineKeyboardButton(text="📝 Изменить остатки", callback_data="stock:edit")],
+            [InlineKeyboardButton(text="⚠️ Низкие остатки", callback_data="stock:low")],
+            [InlineKeyboardButton(text="❌ Нет в наличии", callback_data="stock:out")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:back")]
         ]
     )
 

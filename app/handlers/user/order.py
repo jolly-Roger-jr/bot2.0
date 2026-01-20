@@ -198,10 +198,8 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
         await state.clear()
         return
 
-    # Сохраняем заказ в БД
     async for session in get_session():
         try:
-            # Получаем или создаем пользователя
             from sqlalchemy import select
             result = await session.execute(
                 select(User).where(User.telegram_id == str(callback.from_user.id))
@@ -209,14 +207,15 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
             user = result.scalar_one_or_none()
 
             if not user:
-                # Создаем пользователя
+                # ✅ ПРАВИЛЬНО: создаем с telegram_id
                 user = User(
-                    telegram_id=str(callback.from_user.id),
+                    telegram_id=str(callback.from_user.id),  # ✅
                     username=callback.from_user.username,
                     full_name=callback.from_user.full_name
                 )
                 session.add(user)
                 await session.flush()
+
 
             # Обновляем контактные данные пользователя
             user.phone = phone

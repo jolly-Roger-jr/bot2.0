@@ -1,13 +1,11 @@
-# app/services/notifications.py - ОБНОВЛЕННЫЙ
-
+# app/services/notifications.py
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.config import settings
 
 
 async def notify_admin_new_order(bot: Bot, order_data: dict):
-    """Отправить админу уведомление о новом заказе с кнопками"""
-
+    """Отправить админу уведомление о новом заказе"""
     order_id = order_data.get('order_id')
     user_info = order_data.get('user_info', {})
     items = order_data.get('items', [])
@@ -15,10 +13,8 @@ async def notify_admin_new_order(bot: Bot, order_data: dict):
     address = order_data.get('address', '')
     phone = order_data.get('phone', '')
 
-    # Формируем текст
     text = f"🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>\n\n"
 
-    # Информация о покупателе
     text += f"<b>👤 Покупатель:</b>\n"
     text += f"• Имя: {user_info.get('name', 'Не указано')}\n"
     if user_info.get('username'):
@@ -26,10 +22,8 @@ async def notify_admin_new_order(bot: Bot, order_data: dict):
     text += f"• ID: {user_info.get('id', 'Неизвестно')}\n"
     text += f"• Телефон: {phone}\n\n"
 
-    # Адрес
     text += f"<b>📍 Адрес доставки:</b>\n{address}\n\n"
 
-    # Товары
     text += f"<b>📦 Товары ({len(items)}):</b>\n"
     for item in items:
         if hasattr(item, 'product') and item.product:
@@ -38,7 +32,6 @@ async def notify_admin_new_order(bot: Bot, order_data: dict):
 
     text += f"\n<b>💰 Итого:</b> {int(total)} RSD"
 
-    # Клавиатура с действиями
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [

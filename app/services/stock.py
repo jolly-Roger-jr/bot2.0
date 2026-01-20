@@ -1,13 +1,10 @@
-# app/services/stock.py - НОВЫЙ ФАЙЛ
-
+# app/services/stock.py
 from sqlalchemy import select, update
 from app.db.session import get_session
 from app.db.models import Product
 
 
 class StockService:
-    """Сервис для управления остатками товаров"""
-
     @staticmethod
     async def get_product_stock(product_id: int):
         """Получить информацию об остатках товара"""
@@ -28,26 +25,23 @@ class StockService:
     async def update_stock(product_id: int, stock_grams: int, available: bool = None):
         """Обновить остатки товара"""
         async for session in get_session():
-            # Получаем продукт
             product = await session.get(Product, product_id)
             if not product:
                 return False
 
-            # Обновляем остатки
-            product.stock_grams = max(0, stock_grams)  # не может быть отрицательным
+            product.stock_grams = max(0, stock_grams)
 
-            # Обновляем доступность если указана
             if available is not None:
                 product.available = available
             elif stock_grams <= 0:
-                product.available = False  # автоматически выключаем если нет остатков
+                product.available = False
 
             await session.commit()
             return True
 
     @staticmethod
     async def set_availability(product_id: int, available: bool):
-        """Включить/выключить товар (без изменения остатков)"""
+        """Включить/выключить товар"""
         async for session in get_session():
             await session.execute(
                 update(Product)
@@ -68,7 +62,6 @@ class StockService:
             new_stock = product.stock_grams + grams_to_add
             product.stock_grams = max(0, new_stock)
 
-            # Если были нулевые остатки и добавляем - включаем товар
             if product.stock_grams > 0 and not product.available:
                 product.available = True
 
@@ -82,13 +75,13 @@ class StockService:
 
     @staticmethod
     async def get_low_stock_products(threshold: int = 1000):
-        """Получить товары с низкими остатками (меньше threshold грамм)"""
+        """Получить товары с низкими остатками"""
         async for session in get_session():
             result = await session.execute(
                 select(Product)
-                .where(Product.stock_grams > 0)  # не нулевые
-                .where(Product.stock_grams < threshold)  # ниже порога
-                .where(Product.available == True)  # только доступные
+                .where(Product.stock_grams > 0)
+                .where(Product.stock_grams < threshold)
+                .where(Product.available == True)
                 .order_by(Product.stock_grams)
             )
             return result.scalars().all()
@@ -105,5 +98,4 @@ class StockService:
             return result.scalars().all()
 
 
-# Глобальный экземпляр для удобства
 stock_service = StockService()
