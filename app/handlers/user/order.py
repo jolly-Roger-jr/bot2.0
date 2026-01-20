@@ -1,14 +1,15 @@
-# app/handlers/user/order.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# app/handlers/user/order.py
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy import select
 
 from app.callbacks import CB
 from app.services.cart import get_cart_items, clear_cart, get_cart_total, validate_cart_for_order
 from app.services.notifications import notify_admin_new_order
-from app.keyboards.user import confirm_keyboard, back_to_cart_keyboard
+from app.keyboards.user import confirm_keyboard, back_to_cart_keyboard  # ✅ ТОЛЬКО нужные импорты
 from app.db.session import get_session
 from app.db.models import Order, OrderItem, Product, User
 
@@ -38,6 +39,7 @@ async def get_or_create_user(session, telegram_id: int, username: str = None, fu
         await session.flush()
 
     return user
+
 
 
 @router.callback_query(F.data == "cart:check_availability")
@@ -200,22 +202,13 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     async for session in get_session():
         try:
-            from sqlalchemy import select
-            result = await session.execute(
-                select(User).where(User.telegram_id == str(callback.from_user.id))
+            # Получаем или создаем пользователя
+            user = await get_or_create_user(
+                session,
+                telegram_id=callback.from_user.id,
+                username=callback.from_user.username,
+                full_name=callback.from_user.full_name
             )
-            user = result.scalar_one_or_none()
-
-            if not user:
-                # ✅ ПРАВИЛЬНО: создаем с telegram_id
-                user = User(
-                    telegram_id=str(callback.from_user.id),  # ✅
-                    username=callback.from_user.username,
-                    full_name=callback.from_user.full_name
-                )
-                session.add(user)
-                await session.flush()
-
 
             # Обновляем контактные данные пользователя
             user.phone = phone
@@ -231,7 +224,7 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
                 status="pending"
             )
             session.add(order)
-            await session.flush()  # Получаем ID заказа
+            await session.flush()
 
             # Создаем элементы заказа
             for item in items:

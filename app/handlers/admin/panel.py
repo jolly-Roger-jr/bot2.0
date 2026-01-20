@@ -1,7 +1,7 @@
-# app/handlers/admin/panel.py
+# app/handlers/admin/panel.py - ДОПОЛНЕННАЯ ВЕРСИЯ
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from app.config import settings
 from app.keyboards.admin import admin_menu, stock_management_menu
 from app.db.backup import backup_manager
@@ -9,12 +9,26 @@ from app.db.backup import backup_manager
 router = Router()
 
 
-# ❌ УДАЛЕН: Обработчик команды /admin (перенесен в __init__.py)
-# @router.message(F.text == "/admin")
-# async def admin_entry(message: Message):
-#     if message.from_user.id != settings.admin_id:
-#         return
-#     await message.answer("⚙️ Админ-панель Barkery", reply_markup=admin_menu())
+@router.message(F.text == "/admin")
+async def admin_entry(message: Message):
+    """Команда /admin - вход в админ-панель"""
+    if str(message.from_user.id) != str(settings.admin_id):
+        await message.answer("❌ У вас нет доступа к этой команде")
+        return
+
+    await message.answer(
+        "⚙️ <b>Админ-панель Barkery</b>\n\n"
+        "Выберите раздел для управления:",
+        parse_mode="HTML",
+        reply_markup=admin_menu()
+    )
+
+
+@router.callback_query(F.data == "admin:back")
+async def back_to_admin(callback: CallbackQuery):
+    """Возврат в главное меню админки"""
+    await admin_entry(callback.message)
+    await callback.answer()
 
 
 @router.callback_query(F.data == "admin_stock")

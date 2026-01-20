@@ -1,5 +1,6 @@
-# app/scheduler.py
+# app/scheduler.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
 import logging
+import pytz  # ✅ ДОБАВЛЕНО
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.config import settings
@@ -7,20 +8,25 @@ from app.db.backup import backup_database
 from app.utils.timezone import get_serbia_time
 
 logger = logging.getLogger(__name__)
-scheduler = AsyncIOScheduler(timezone=settings.timezone)
+
+# ✅ КОРРЕКТНОЕ СОЗДАНИЕ ПЛАНИРОВЩИКА С ЧАСОВЫМ ПОЯСОМ
+scheduler = AsyncIOScheduler()
 
 
 def setup_backup_schedule():
     """Настройка ежедневного резервного копирования в 4:00"""
     try:
+        # Получаем часовой пояс Сербии
+        serbia_tz = pytz.timezone(settings.timezone)
+
         scheduler.add_job(
             daily_backup_task,
-            trigger=CronTrigger(hour=4, minute=0, timezone=settings.timezone),
+            trigger=CronTrigger(hour=4, minute=0, timezone=serbia_tz),  # ✅ КОРРЕКТНЫЙ ЧАСОВОЙ ПОЯС
             id='daily_backup',
             name='Ежедневное резервное копирование БД',
             replace_existing=True
         )
-        logger.info("✅ Планировщик настроен на 4:00 каждый день")
+        logger.info(f"✅ Планировщик настроен на 4:00 каждый день (часовой пояс: {settings.timezone})")
     except Exception as e:
         logger.error(f"❌ Ошибка настройки планировщика: {e}")
 

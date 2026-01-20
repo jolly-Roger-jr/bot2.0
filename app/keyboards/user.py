@@ -1,4 +1,4 @@
-# app/keyboards/user.py - ПОЛНЫЙ ФАЙЛ С КНОПКАМИ +/- 100г
+# app/keyboards/user.py
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -42,10 +42,10 @@ def products_keyboard(products, category: str, show_unavailable: bool = False,
 
     for product in products:
         if product.available and product.stock_grams > 0:
-            # Доступные товары
+            # Доступные товары ведут на детальную страницу
             builder.button(
                 text=f"✅ {product.name} - {product.price} RSD/100г",
-                callback_data=f"product:{product.id}:{category}"
+                callback_data=f"product_detail:{product.id}:{category}"
             )
         elif show_unavailable:
             # Недоступные товары (только если show_unavailable=True)
@@ -81,70 +81,103 @@ def products_keyboard(products, category: str, show_unavailable: bool = False,
     return builder.as_markup()
 
 
-def quantity_keyboard(product_id: int, category: str, price: float, current_qty: int = 100) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора количества товара с шагом 100г"""
+def product_detail_keyboard(product_id: int, category: str, price: float,
+                            in_cart_qty: int = 0, stock_grams: int = 0) -> InlineKeyboardMarkup:
+    """Клавиатура для детальной страницы товара согласно ТЗ"""
     builder = InlineKeyboardBuilder()
 
-    # Кнопки изменения количества с шагом 100г
+    if in_cart_qty > 0:
+        # Если товар уже в корзине - ОДНА кнопка "🛒" согласно ТЗ
+        builder.button(
+            text=f"🛒 В корзине ({in_cart_qty}г)",
+            callback_data=f"cart:manage:{product_id}"
+        )
+    else:
+        # Если товара нет в корзине - кнопки +/-100г согласно ТЗ
+        builder.button(
+            text="➖100г",
+            callback_data=f"qty:dec:{product_id}:{category}:100"
+        )
+
+        builder.button(
+            text="100г",  # Начальное значение
+            callback_data="noop"
+        )
+
+        builder.button(
+            text="➕100г",
+            callback_data=f"qty:inc:{product_id}:{category}:100"
+        )
+
+        # Кнопка добавления в корзину
+        total_price = price * 100 / 100  # 100г по цене за 100г
+        builder.button(
+            text=f"🛒 Добавить 100г ({int(total_price)} RSD)",
+            callback_data=f"cart:add:{product_id}:100:{category}"
+        )
+
+    # Кнопка назад к товарам категории
     builder.button(
-        text="➖100г",
-        callback_data=f"qty:{product_id}:dec_100:{category}:{current_qty}"
+        text="🔙 Назад к товарам",
+        callback_data=f"category:{category}"
     )
+
+    if in_cart_qty > 0:
+        builder.adjust(1, 1)  # Одна кнопка "В корзине", потом "Назад"
+    else:
+        builder.adjust(3, 1, 1)  # Три кнопки в ряд (+/-/100г), потом кнопка добавления, потом назад
+
+    return builder.as_markup()
+
+
+def update_quantity_keyboard(product_id: int, category: str, price: float,
+                             current_qty: int, stock_grams: int) -> InlineKeyboardMarkup:
+    """Обновленная клавиатура с текущим количеством"""
+    builder = InlineKeyboardBuilder()
+
+    # Проверяем минимальное количество (не менее 100г)
+    if current_qty <= 100:
+        builder.button(
+            text="➖100г",
+            callback_data="noop"  # Неактивная кнопка
+        )
+    else:
+        builder.button(
+            text="➖100г",
+            callback_data=f"qty:dec:{product_id}:{category}:{current_qty}"
+        )
 
     builder.button(
         text=f"{current_qty}г",
         callback_data="noop"
     )
 
-    builder.button(
-        text="➕100г",
-        callback_data=f"qty:{product_id}:inc_100:{category}:{current_qty}"
-    )
+    # Проверяем максимальное количество (не более остатков)
+    if current_qty + 100 > stock_grams:
+        builder.button(
+            text="➕100г",
+            callback_data="noop"  # Неактивная кнопка
+        )
+    else:
+        builder.button(
+            text="➕100г",
+            callback_data=f"qty:inc:{product_id}:{category}:{current_qty}"
+        )
 
     # Кнопка добавления в корзину
+    total_price = price * current_qty / 100
     builder.button(
-        text=f"🛒 Добавить ({price * current_qty / 100:.0f} RSD)",
+        text=f"🛒 Добавить ({int(total_price)} RSD)",
         callback_data=f"cart:add:{product_id}:{current_qty}:{category}"
     )
 
     # Кнопка назад к товарам категории
     builder.button(
-        text="🔙 Назад",
+        text="🔙 Назад к товарам",
         callback_data=f"category:{category}"
     )
 
     builder.adjust(3, 1, 1)
-    return builder.as_markup()
-
-
-def product_card_keyboard(product_id: int, category: str, price: float,
-                          current_cart_qty: int = 0) -> InlineKeyboardMarkup:
-    """Клавиатура для карточки товара (альтернативный вариант)"""
-    builder = InlineKeyboardBuilder()
-
-    if current_cart_qty > 0:
-        # Если товар уже в корзине, показываем текущее количество
-        builder.button(
-            text=f"В корзине: {current_cart_qty}г",
-            callback_data="noop"
-        )
-
-        builder.adjust(1)
-    else:
-        # Если товара нет в корзине, показываем кнопку добавления 100г
-        builder.button(
-            text=f"🛒 Добавить 100г ({price} RSD)",
-            callback_data=f"cart:add_100g:{product_id}:{category}"
-        )
-
-        builder.adjust(1)
-
-    # Кнопка назад к товарам категории
-    builder.button(
-        text="🔙 Назад",
-        callback_data=f"category:{category}"
-    )
-
     return builder.as_markup()
 
 

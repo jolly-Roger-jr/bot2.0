@@ -117,10 +117,16 @@ async def main():
     try:
         from app.db.engine import engine
         from app.db.models import Base
+        from app.db.init_db import init_database
 
+        # Создаем таблицы
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ База данных инициализирована")
+        logger.info("✅ Таблицы базы данных созданы")
+
+        # Инициализируем тестовые данные (опционально, можно убрать)
+        # await init_database()
+        # logger.info("✅ Тестовые данные добавлены")
 
     except Exception as e:
         logger.warning(f"⚠️ База данных: {e}")

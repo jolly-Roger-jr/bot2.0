@@ -1,12 +1,12 @@
-# app/handlers/user/catalog.py - РАБОЧАЯ ВЕРСИЯ
+# app/handlers/user/catalog.py
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import Command
 import logging
 
-from app.services import catalog
-from app.services.cart import get_cart_summary
-from app.keyboards.user import products_keyboard, quantity_keyboard
+from app.services.catalog import get_categories, get_products_by_category, get_product
+from app.services.cart import get_cart_summary, get_cart_items
+from app.keyboards.user import products_keyboard, product_detail_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ async def show_products(callback: CallbackQuery):
         category = callback.data.split(":", 1)[1]
         logger.info(f"📦 Пользователь выбрал категорию: {category}")
 
-        products = await catalog.get_products_by_category(category)
+        products = await get_products_by_category(category)
 
         if not products:
             await callback.message.answer(
@@ -53,9 +53,9 @@ async def show_products(callback: CallbackQuery):
         await callback.answer("❌ Ошибка загрузки товаров", show_alert=True)
 
 
-@router.callback_query(F.data.startswith("product:"))
-async def show_product_details(callback: CallbackQuery):
-    """Показать детали товара с выбором количества"""
+@router.callback_query(F.data.startswith("product_detail:"))
+async def show_product_detail(callback: CallbackQuery):
+    """Показать детали товара с правильными кнопками по ТЗ"""
     try:
         parts = callback.data.split(":")
 
@@ -71,7 +71,7 @@ async def show_product_details(callback: CallbackQuery):
             await callback.answer("❌ Ошибка в данных товара", show_alert=True)
             return
 
-        product = await catalog.get_product(product_id)
+        product = await get_product(product_id)
 
         if not product:
             await callback.answer("❌ Товар не найден", show_alert=True)
@@ -87,24 +87,40 @@ async def show_product_details(callback: CallbackQuery):
             await callback.answer()
             return
 
+        # Проверяем, есть ли товар в корзине
+        cart_items = await get_cart_items(callback.from_user.id)
+        in_cart_qty = 0
+
+        for item in cart_items:
+            if item.product_id == product_id:
+                in_cart_qty = item.quantity
+                break
+
+        # Формируем текст
         text = f"*{product.name}*\n\n"
 
         if product.description:
             text += f"{product.description}\n\n"
 
         text += f"*Цена:* {product.price} RSD за 100 грамм\n"
-        text += f"*В наличии:* {product.stock_grams} грамм\n\n"
-        text += "Выберите количество (шаг 100г):"
+        text += f"*В наличии:* {product.stock_grams} грамм\n"
+
+        if in_cart_qty > 0:
+            text += f"\n*В корзине:* {in_cart_qty} грамм"
+
+        # Получаем клавиатуру согласно ТЗ
+        keyboard = product_detail_keyboard(
+            product_id=product.id,
+            category=category,
+            price=product.price,
+            in_cart_qty=in_cart_qty,
+            stock_grams=product.stock_grams
+        )
 
         await callback.message.edit_text(
             text,
             parse_mode="Markdown",
-            reply_markup=quantity_keyboard(
-                product_id=product.id,
-                category=category,
-                price=product.price,
-                current_qty=100
-            )
+            reply_markup=keyboard
         )
 
         await callback.answer()
@@ -120,7 +136,6 @@ async def back_to_categories(callback: CallbackQuery):
     try:
         from app.handlers.user.start import start
 
-        # Создаем фейковое сообщение
         class FakeMessage:
             def __init__(self, callback):
                 self.from_user = callback.from_user

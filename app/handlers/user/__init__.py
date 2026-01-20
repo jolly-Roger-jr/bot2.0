@@ -1,3 +1,4 @@
+# app/handlers/user/__init__.py
 """
 User handlers - только объявление роутера.
 Все импорты вынесены в app/handlers/__init__.py

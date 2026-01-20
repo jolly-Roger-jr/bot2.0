@@ -4,7 +4,7 @@ from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, ReplyKeyboardRemove
 
-from app.services import catalog
+from app.services.catalog import get_categories
 from app.services.cart import get_cart_summary
 from app.keyboards.user import categories_keyboard
 
@@ -19,7 +19,7 @@ async def start(message: Message):
 
     try:
         # Получаем категории
-        categories = await catalog.get_categories()
+        categories = await get_categories()
 
         if not categories:
             await message.answer(

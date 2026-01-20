@@ -15,7 +15,7 @@ def admin_menu():
                 InlineKeyboardButton(text="➕ Добавить товар", callback_data="admin:add_product")
             ],
             [
-                InlineKeyboardButton(text="📂 Добавить категорию", callback_data="admin_add_category")
+                InlineKeyboardButton(text="📂 Добавить категорию", callback_data="admin:add_category")  # ✅ ИСПРАВЛЕНО
             ]
         ]
     )

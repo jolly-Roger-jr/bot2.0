@@ -1,5 +1,6 @@
-# app/services/cart.py - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ
+# app/services/cart.py
 from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 from app.db.session import get_session
 from app.db.models import CartItem, Product, User
 
@@ -32,11 +33,11 @@ async def add_to_cart(user_id: int, product_id: int, quantity: int):
             if not user:
                 user = User(
                     telegram_id=str(user_id),
-                    username=None,  # Можно добавить позже
+                    username=None,
                     full_name=None
                 )
                 session.add(user)
-                await session.flush()  # Получаем ID пользователя
+                await session.flush()
 
             # 3. Проверяем, есть ли уже этот товар в корзине
             cart_result = await session.execute(
@@ -121,7 +122,7 @@ async def get_cart_total(user_id: int):
                     'item_total': item_total,
                     'available': item.product.available,
                     'stock_grams': item.product.stock_grams,
-                    'product': item.product  # Сохраняем объект продукта
+                    'product': item.product
                 })
 
         return {
@@ -304,7 +305,3 @@ async def get_cart_summary(user_id: int):
     except Exception as e:
         print(f"Ошибка при получении сводки корзины: {e}")
         return {'items_count': 0, 'total': 0, 'has_items': False}
-
-
-# Импорт для selectinload
-from sqlalchemy.orm import selectinload
