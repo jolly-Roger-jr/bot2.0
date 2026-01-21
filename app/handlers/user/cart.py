@@ -1,7 +1,9 @@
-# app/handlers/user/cart.py - ПОЛНЫЙ ФАЙЛ
+# app/handlers/user/cart.py - ИСПРАВЛЕННАЯ ВЕРХНЯЯ ЧАСТЬ
+
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
+import logging
 
 from app.callbacks import CB
 from app.services.cart import (
@@ -11,11 +13,47 @@ from app.services.cart import (
     get_cart_total,
     update_cart_item,
     remove_from_cart,
-    validate_cart_for_order
+    validate_cart_for_order,
+    get_cart_summary
 )
-from app.keyboards.user import cart_keyboard, cart_item_management_keyboard
+from app.keyboards.user import cart_keyboard, cart_item_management_keyboard, categories_keyboard
+from app.services.catalog import get_categories
 
+logger = logging.getLogger(__name__)
 router = Router()
+
+
+@router.callback_query(F.data == "back_to_categories")
+async def back_to_categories_from_cart(callback: CallbackQuery):
+    """Возврат из корзины в категории - исправленная версия без циклического импорта"""
+    try:
+        await callback.message.delete()
+
+        # Получаем категории и информацию о корзине
+        categories = await get_categories()
+        cart_info = await get_cart_summary(callback.from_user.id)
+
+        if not categories:
+            await callback.message.answer(
+                "📭 Категорий пока нет.\n"
+                "Обратитесь к администратору."
+            )
+            return
+
+        # Создаем приветственное сообщение с категориями
+        await callback.message.answer(
+            "🐶 <b>Добро пожаловать в Barkery!</b>\n\n"
+            "Выберите категорию лакомств:",
+            parse_mode="HTML",
+            reply_markup=categories_keyboard(categories, callback.from_user.id, cart_info)
+        )
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Ошибка при возврате в категории: {e}")
+        await callback.answer("❌ Ошибка возврата", show_alert=True)
+
 
 
 @router.message(Command("cart"))
@@ -92,15 +130,17 @@ async def add_to_cart_cb(callback: CallbackQuery):
         await callback.answer(f"✅ Добавлено {quantity}г")
 
         # Возвращаем к категории товаров
-        from app.handlers.user.catalog import show_products
-        fake_callback = type('FakeCallback', (), {
-            'data': f"category:{parts[4]}",
-            'from_user': callback.from_user,
-            'message': callback.message,
-            'answer': callback.answer
-        })()
-
-        await show_products(fake_callback)
+        await callback.answer(f"✅ Добавлено {quantity}г")
+        await callback.message.answer(
+            f"✅ Товар добавлен в корзину!\n\n"
+            f"Перейдите в корзину или продолжайте покупки.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🛒 Корзина", callback_data="show_cart")],
+                    [InlineKeyboardButton(text="📦 К товарам", callback_data=f"category:{parts[4]}")]
+                ]
+            )
+        )
     else:
         error_msg = result.get('error', 'Неизвестная ошибка')
         if 'available_qty' in result and result['available_qty'] > 0:

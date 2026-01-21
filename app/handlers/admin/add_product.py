@@ -1,5 +1,5 @@
+# app/handlers/admin/add_product.py - ИСПРАВЛЕННЫЙ# app/handlers/admin/products.py - ИСПРАВЛЕННЫЙ (начало)
 # app/handlers/admin/add_product.py - ИСПРАВЛЕННЫЙ
-
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -27,9 +27,7 @@ class AddProductForm(StatesGroup):
 @router.message(Command("add_product"))
 async def start_add_product(message: Message, state: FSMContext):
     """Начало процесса добавления товара"""
-    if str(message.from_user.id) != str(settings.admin_id):
-        return
-
+    # Проверка через middleware
     # Получаем список категорий
     async for session in get_session():
         result = await session.execute(select(Category))
@@ -56,6 +54,8 @@ async def start_add_product(message: Message, state: FSMContext):
             ]
         )
     )
+
+# ... остальной код БЕЗ ИЗМЕНЕНИЙ, только удалены проверки админа
 
 
 @router.message(AddProductForm.waiting_name)

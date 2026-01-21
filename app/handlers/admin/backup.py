@@ -1,7 +1,6 @@
-# app/handlers/admin/backup.py - НОВЫЙ ФАЙЛ
-
+# app/handlers/admin/backup.py - ИСПРАВЛЕННЫЙ
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton  # ДОБАВЛЕНО
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from app.config import settings
 from app.db.backup import backup_manager, backup_database
@@ -13,9 +12,7 @@ router = Router()
 @router.message(Command("backup"))
 async def admin_backup_command(message: Message):
     """Команда для создания резервной копии вручную"""
-    if message.from_user.id != settings.admin_id:
-        return
-
+    # Проверка через middleware
     await message.answer("🔄 Создание резервной копии...")
 
     result = await manual_backup_now()
@@ -35,9 +32,7 @@ async def admin_backup_command(message: Message):
 @router.message(Command("backups"))
 async def list_backups_command(message: Message):
     """Команда для просмотра списка резервных копий"""
-    if message.from_user.id != settings.admin_id:
-        return
-
+    # Проверка через middleware
     backups = backup_manager.get_backup_list()
 
     if not backups:
@@ -45,7 +40,7 @@ async def list_backups_command(message: Message):
         return
 
     text = "📁 *Список резервных копий:*\n\n"
-    for i, backup in enumerate(backups[:10], 1):  # Показываем последние 10
+    for i, backup in enumerate(backups[:10], 1):
         size = f"{backup['size_kb']:.1f} KB"
         created = backup['created'].strftime("%d.%m.%Y %H:%M")
         text += f"{i}. *{backup['name']}*\n"
@@ -58,14 +53,10 @@ async def list_backups_command(message: Message):
     await message.answer(text, parse_mode="Markdown")
 
 
-# В app/handlers/admin/backup.py ДОБАВЬТЕ ЭТО:
-
 @router.callback_query(F.data == "backup:create")
 async def create_backup_callback(callback: CallbackQuery):
     """Создание резервной копии через callback"""
-    if callback.from_user.id != settings.admin_id:
-        return
-
+    # Проверка через middleware
     await callback.answer("🔄 Создание резервной копии...", show_alert=False)
 
     result = await manual_backup_now()
@@ -89,9 +80,7 @@ async def create_backup_callback(callback: CallbackQuery):
 @router.callback_query(F.data == "backup:list")
 async def list_backups_callback(callback: CallbackQuery):
     """Список резервных копий через callback"""
-    if callback.from_user.id != settings.admin_id:
-        return
-
+    # Проверка через middleware
     backups = backup_manager.get_backup_list()
 
     if not backups:
@@ -103,7 +92,7 @@ async def list_backups_callback(callback: CallbackQuery):
 
     # Показываем в виде инлайн-списка
     buttons = []
-    for backup in backups[:10]:  # Показываем последние 10
+    for backup in backups[:10]:
         btn_text = f"{backup['created'].strftime('%d.%m %H:%M')} - {backup['size_kb']:.0f}KB"
         buttons.append([
             InlineKeyboardButton(

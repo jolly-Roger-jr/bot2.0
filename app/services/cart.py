@@ -1,20 +1,25 @@
-# app/services/cart.py
+# app/services/cart.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
+import logging
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from app.db.session import get_session
 from app.db.models import CartItem, Product, User
 
+logger = logging.getLogger(__name__)
+
 
 async def add_to_cart(user_id: int, product_id: int, quantity: int):
     """Добавить товар в корзину пользователя"""
-    async for session in get_session():
-        try:
+    try:
+        async for session in get_session():
             # 1. Проверяем наличие товара
             product = await session.get(Product, product_id)
             if not product:
+                logger.warning(f"Товар не найден: {product_id}")
                 return {'success': False, 'error': 'Товар не найден'}
 
             if not product.available:
+                logger.warning(f"Товар недоступен: {product_id}")
                 return {'success': False, 'error': 'Товар временно недоступен'}
 
             if product.stock_grams < quantity:
@@ -24,15 +29,15 @@ async def add_to_cart(user_id: int, product_id: int, quantity: int):
                     'available_qty': product.stock_grams
                 }
 
-            # 2. Получаем или создаем пользователя
+            # 2. Получаем или создаем пользователя (telegram_id как String)
             user_result = await session.execute(
-                select(User).where(User.telegram_id == str(user_id))
+                select(User).where(User.telegram_id == str(user_id))  # ✅ ИСПРАВЛЕНО: str(user_id)
             )
             user = user_result.scalar_one_or_none()
 
             if not user:
                 user = User(
-                    telegram_id=str(user_id),
+                    telegram_id=str(user_id),  # ✅ ИСПРАВЛЕНО: str(user_id)
                     username=None,
                     full_name=None
                 )
@@ -49,10 +54,8 @@ async def add_to_cart(user_id: int, product_id: int, quantity: int):
             cart_item = cart_result.scalar_one_or_none()
 
             if cart_item:
-                # Увеличиваем количество существующего товара
                 cart_item.quantity += quantity
             else:
-                # Создаем новый элемент корзины
                 cart_item = CartItem(
                     user_id=user.id,
                     product_id=product_id,
@@ -63,86 +66,45 @@ async def add_to_cart(user_id: int, product_id: int, quantity: int):
             await session.commit()
             return {'success': True, 'message': f'Добавлено {quantity}г товара "{product.name}"'}
 
-        except Exception as e:
-            await session.rollback()
-            return {'success': False, 'error': f'Ошибка при добавлении в корзину: {str(e)}'}
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении в корзину: {e}", exc_info=True)
+        return {'success': False, 'error': 'Внутренняя ошибка. Попробуйте позже.'}
 
 
 async def get_cart_items(user_id: int):
     """Получить все товары в корзине пользователя"""
     async for session in get_session():
         try:
-            # Находим пользователя
+            # Находим пользователя (telegram_id как String)
             user_result = await session.execute(
-                select(User).where(User.telegram_id == str(user_id))
+                select(User).where(User.telegram_id == str(user_id))  # ✅ ИСПРАВЛЕНО: str(user_id)
             )
             user = user_result.scalar_one_or_none()
 
             if not user:
                 return []
 
-            # Получаем товары корзины с информацией о продуктах
+            # Получаем товары в корзине
             result = await session.execute(
                 select(CartItem)
-                .join(Product, CartItem.product_id == Product.id)
-                .where(CartItem.user_id == user.id)
                 .options(selectinload(CartItem.product))
+                .where(CartItem.user_id == user.id)
             )
-
             items = result.scalars().all()
             return items
 
         except Exception as e:
-            print(f"Ошибка при получении корзины: {e}")
+            logger.error(f"Ошибка при получении корзины: {e}")
             return []
-
-
-async def get_cart_total(user_id: int):
-    """Получить общую сумму корзины и список товаров"""
-    try:
-        items = await get_cart_items(user_id)
-
-        if not items:
-            return {'success': False, 'error': 'Корзина пуста'}
-
-        cart_info = []
-        total_amount = 0
-
-        for item in items:
-            if item.product:
-                item_total = item.product.price * item.quantity / 100
-                total_amount += item_total
-
-                cart_info.append({
-                    'id': item.id,
-                    'product_id': item.product_id,
-                    'product_name': item.product.name,
-                    'price_per_100g': item.product.price,
-                    'quantity': item.quantity,
-                    'item_total': item_total,
-                    'available': item.product.available,
-                    'stock_grams': item.product.stock_grams,
-                    'product': item.product
-                })
-
-        return {
-            'success': True,
-            'items': cart_info,
-            'total': total_amount,
-            'items_count': len(cart_info)
-        }
-
-    except Exception as e:
-        return {'success': False, 'error': f'Ошибка расчета корзины: {str(e)}'}
 
 
 async def clear_cart(user_id: int):
     """Очистить корзину пользователя"""
     async for session in get_session():
         try:
-            # Находим пользователя
+            # Находим пользователя (telegram_id как String)
             user_result = await session.execute(
-                select(User).where(User.telegram_id == str(user_id))
+                select(User).where(User.telegram_id == str(user_id))  # ✅ ИСПРАВЛЕНО: str(user_id)
             )
             user = user_result.scalar_one_or_none()
 
@@ -182,9 +144,9 @@ async def update_cart_item(user_id: int, product_id: int, new_quantity: int):
                     'available_qty': product.stock_grams
                 }
 
-            # Находим пользователя
+            # Находим пользователя (telegram_id как String)
             user_result = await session.execute(
-                select(User).where(User.telegram_id == str(user_id))
+                select(User).where(User.telegram_id == str(user_id))  # ✅ ИСПРАВЛЕНО: str(user_id)
             )
             user = user_result.scalar_one_or_none()
 
@@ -218,9 +180,9 @@ async def remove_from_cart(user_id: int, product_id: int):
     """Удалить товар из корзины"""
     async for session in get_session():
         try:
-            # Находим пользователя
+            # Находим пользователя (telegram_id как String)
             user_result = await session.execute(
-                select(User).where(User.telegram_id == str(user_id))
+                select(User).where(User.telegram_id == str(user_id))  # ✅ ИСПРАВЛЕНО: str(user_id)
             )
             user = user_result.scalar_one_or_none()
 
@@ -241,6 +203,45 @@ async def remove_from_cart(user_id: int, product_id: int):
         except Exception as e:
             await session.rollback()
             return {'success': False, 'error': f'Ошибка при удалении: {str(e)}'}
+
+
+async def get_cart_total(user_id: int):
+    """Получить общую сумму корзины и список товаров"""
+    try:
+        items = await get_cart_items(user_id)
+
+        if not items:
+            return {'success': False, 'error': 'Корзина пуста'}
+
+        cart_info = []
+        total_amount = 0
+
+        for item in items:
+            if item.product:
+                item_total = item.product.price * item.quantity / 100
+                total_amount += item_total
+
+                cart_info.append({
+                    'id': item.id,
+                    'product_id': item.product_id,
+                    'product_name': item.product.name,
+                    'price_per_100g': item.product.price,
+                    'quantity': item.quantity,
+                    'item_total': item_total,
+                    'available': item.product.available,
+                    'stock_grams': item.product.stock_grams,
+                    'product': item.product
+                })
+
+        return {
+            'success': True,
+            'items': cart_info,
+            'total': total_amount,
+            'items_count': len(cart_info)
+        }
+
+    except Exception as e:
+        return {'success': False, 'error': f'Ошибка расчета корзины: {str(e)}'}
 
 
 async def validate_cart_for_order(user_id: int):

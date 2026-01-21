@@ -12,7 +12,7 @@ router = Router()
 
 @router.callback_query(F.data.startswith("qty:"))
 async def handle_quantity_change(callback: CallbackQuery):
-    """Обработка изменения количества товара с шагом 100г"""
+    """Обработка изменения количества товара с шагом 100г без всплывающих сообщений"""
     logger.info(f"📨 Получен callback qty: {callback.data}")
 
     # Формат: "qty:{action}:{product_id}:{category}:{current_qty}"
@@ -21,7 +21,7 @@ async def handle_quantity_change(callback: CallbackQuery):
 
     if len(parts) != 5:
         logger.error(f"❌ Неправильный формат: {len(parts)} частей вместо 5")
-        await callback.answer("❌ Ошибка формата", show_alert=True)
+        await callback.answer("")  # Пустое всплывающее сообщение
         return
 
     _, action, product_id_str, category, current_qty_str = parts
@@ -32,14 +32,14 @@ async def handle_quantity_change(callback: CallbackQuery):
         logger.info(f"📦 Парсинг: product_id={product_id}, action={action}, category={category}, qty={current_qty}")
     except ValueError as e:
         logger.error(f"❌ Ошибка парсинга: {e}")
-        await callback.answer("❌ Ошибка в данных", show_alert=True)
+        await callback.answer("")  # Пустое всплывающее сообщение
         return
 
     # Получаем информацию о товаре
     product = await get_product(product_id)
     if not product:
         logger.error(f"❌ Товар не найден: {product_id}")
-        await callback.answer("❌ Товар не найден", show_alert=True)
+        await callback.answer("")  # Пустое всплывающее сообщение
         return
 
     # Изменяем количество с шагом 100г
@@ -51,13 +51,13 @@ async def handle_quantity_change(callback: CallbackQuery):
         logger.info(f"➕ Увеличение: {current_qty} -> {new_qty}")
     else:
         logger.error(f"❌ Неизвестное действие: {action}")
-        await callback.answer("❌ Неизвестное действие", show_alert=True)
+        await callback.answer("")  # Пустое всплывающее сообщение
         return
 
     # Проверяем доступное количество
     if new_qty > product.stock_grams:
         logger.warning(f"⚠️ Недостаточно: нужно {new_qty}, есть {product.stock_grams}")
-        await callback.answer(f"❌ Доступно только {product.stock_grams}г", show_alert=True)
+        await callback.answer("")  # Пустое всплывающее сообщение
         return
 
     # Обновляем клавиатуру с новым количеством
@@ -73,11 +73,11 @@ async def handle_quantity_change(callback: CallbackQuery):
             )
         )
         logger.info(f"✅ Клавиатура обновлена")
-        await callback.answer(f"Количество: {new_qty}г")
+        await callback.answer("")  # Пустое всплывающее сообщение вместо текста
     except Exception as e:
         error_msg = str(e)
         logger.error(f"❌ Ошибка обновления: {error_msg}")
         if "message is not modified" in error_msg:
-            await callback.answer(f"Количество: {new_qty}г")
+            await callback.answer("")  # Пустое всплывающее сообщение
         else:
-            await callback.answer("❌ Ошибка обновления", show_alert=True)
+            await callback.answer("")  # Пустое всплывающее сообщение

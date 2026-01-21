@@ -8,7 +8,7 @@ from .user import (
     categories_keyboard,
     products_keyboard,
     product_detail_keyboard,
-    update_quantity_keyboard,
+    update_quantity_keyboard,  # ✅ Теперь эта функция есть
     cart_keyboard,
     cart_item_management_keyboard,
     confirm_keyboard,
@@ -57,7 +57,7 @@ __all__ = [
     'categories_keyboard',
     'products_keyboard',
     'product_detail_keyboard',
-    'update_quantity_keyboard',
+    'update_quantity_keyboard',  # ✅ Добавлено
     'cart_keyboard',
     'cart_item_management_keyboard',
     'confirm_keyboard',

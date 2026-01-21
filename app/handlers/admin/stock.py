@@ -24,9 +24,7 @@ class StockManagement(StatesGroup):
 @router.message(Command("stock"))
 async def stock_management_menu(message: Message):
     """Главное меню управления остатками"""
-    if message.from_user.id != settings.admin_id:
-        return
-
+    # Проверка через middleware
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📦 Просмотреть остатки", callback_data="stock:view")],
@@ -45,6 +43,7 @@ async def stock_management_menu(message: Message):
         reply_markup=keyboard
     )
 
+# ... остальной код БЕЗ ИЗМЕНЕНИЙ, только удалены проверки админа
 
 @router.callback_query(F.data == "stock:view")
 async def view_stock_menu(callback: CallbackQuery):

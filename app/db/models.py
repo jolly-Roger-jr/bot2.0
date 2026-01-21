@@ -1,5 +1,4 @@
-# app/db/models.py
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean, DateTime, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean, DateTime, Text, UniqueConstraint, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.engine import Base
@@ -9,7 +8,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(String, unique=True, nullable=False, index=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
     phone = Column(String, nullable=True)

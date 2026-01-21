@@ -1,4 +1,3 @@
-# alembic/versions/add_full_schema.py
 """add_full_schema
 
 Revision ID: add_full_schema
@@ -16,7 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Создание всех таблиц по новой схеме."""
+    """Создание всех таблиц (только если их нет)"""
+    # Проверяем существование таблиц перед созданием
+
     # Пользователи
     op.create_table(
         'users',
@@ -28,13 +29,15 @@ def upgrade() -> None:
         sa.Column('address', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column('last_active', sa.DateTime(timezone=True), server_default=sa.func.now()),
+        if_not_exists=True  # Важно: создавать только если не существует
     )
 
     # Категории
     op.create_table(
         'categories',
         sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('name', sa.String(), nullable=False, unique=True),
+        sa.Column('name', sa.String(), unique=True, nullable=False),
+        if_not_exists=True
     )
 
     # Товары
@@ -49,6 +52,7 @@ def upgrade() -> None:
         sa.Column('available', sa.Boolean(), default=True, nullable=False),
         sa.Column('stock_grams', sa.Integer(), default=0, nullable=False),
         sa.UniqueConstraint('category_id', 'name', name='uq_product_category_name'),
+        if_not_exists=True
     )
 
     # Корзина
@@ -59,6 +63,7 @@ def upgrade() -> None:
         sa.Column('product_id', sa.Integer(), sa.ForeignKey('products.id', ondelete='CASCADE')),
         sa.Column('quantity', sa.Integer(), nullable=False),
         sa.UniqueConstraint('user_id', 'product_id', name='uq_cart_user_product'),
+        if_not_exists=True
     )
 
     # Заказы
@@ -72,6 +77,7 @@ def upgrade() -> None:
         sa.Column('address', sa.Text(), nullable=False),
         sa.Column('status', sa.String(), default='pending', nullable=False),
         sa.Column('total_amount', sa.Float(), nullable=False),
+        if_not_exists=True
     )
 
     # Элементы заказа
@@ -83,11 +89,12 @@ def upgrade() -> None:
         sa.Column('product_name', sa.String(), nullable=False),
         sa.Column('price_per_100g', sa.Float(), nullable=False),
         sa.Column('quantity', sa.Integer(), nullable=False),
+        if_not_exists=True
     )
 
 
 def downgrade() -> None:
-    """Удаление всех таблиц (откат)."""
+    """Удаление всех таблиц (откат)"""
     op.drop_table('order_items')
     op.drop_table('orders')
     op.drop_table('cart_items')

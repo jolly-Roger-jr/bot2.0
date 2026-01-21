@@ -1,11 +1,10 @@
-# app/handlers/admin/add_category.py
-
+# app/handlers/admin/add_category.py - ИСПРАВЛЕННЫЙ
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
-from sqlalchemy import select  # ✅ Добавлен импорт
+from sqlalchemy import select
 
 from app.config import settings
 from app.db.session import get_session
@@ -23,9 +22,7 @@ class AddCategoryForm(StatesGroup):
 @router.message(Command("add_category"))
 async def start_add_category(message: Message, state: FSMContext):
     """Начало процесса добавления категории"""
-    if str(message.from_user.id) != str(settings.admin_id):
-        return
-
+    # Проверка через middleware
     await state.set_state(AddCategoryForm.waiting_name)
 
     await message.answer(

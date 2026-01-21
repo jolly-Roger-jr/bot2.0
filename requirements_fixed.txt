@@ -1,27 +1,21 @@
-# Основные
+cd ~/bot/barkery_bot
+cat > requirements.txt << 'EOF'
 aiogram==3.10.0
-aiohttp==3.9.0
 aiofiles==23.2.1
+aiohttp==3.9.0
 aiosqlite==0.19.0
-
-# Pydantic (ВАЖНО: сначала core, потом pydantic)
-pydantic-core==2.20.1
+alembic==1.13.1
+APScheduler==3.10.4
 pydantic==2.8.2
 pydantic-settings==2.12.0
-
-# База данных
-SQLAlchemy==2.0.25
-alembic==1.13.1
-
-# Конфигурация
 python-dotenv==1.0.1
-
-# Планировщик
-APScheduler==3.10.4
-
-# Время
+SQLAlchemy==2.0.25
 pytz==2025.2
-tzlocal==5.3.1
-
-# Дополнительные
-colorlog==6.8.2
+APScheduler==3.10.4
+greenlet==3.3.0
+Mako==1.3.10
+# Для тестирования
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-mock==3.14.0
+EOF

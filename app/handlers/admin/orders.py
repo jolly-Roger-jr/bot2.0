@@ -24,9 +24,7 @@ class OrderSearch(StatesGroup):
 @router.message(Command("orders"))
 async def orders_management_menu(message: Message):
     """Главное меню управления заказами"""
-    if message.from_user.id != settings.admin_id:
-        return
-
+    # Проверка через middleware
     # Получаем статистику
     stats = await order_service.get_order_stats(days=7)
 
@@ -83,6 +81,8 @@ async def orders_management_menu(message: Message):
     )
 
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+
+# ... остальной код БЕЗ ИЗМЕНЕНИЙ, только удалены проверки админа
 
 
 @router.callback_query(F.data.startswith("admin:orders:"))

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Запуск Barkery_bot - оптимизированная версия
+Единственная точка входа для запуска Barkery_bot
+Запуск: python start_bot.py
 """
 
 import asyncio
@@ -24,7 +25,7 @@ async def main():
         print("\n👋 Завершение работы")
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Ошибка: {e}")
+        print(f"\n❌ Критическая ошибка: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

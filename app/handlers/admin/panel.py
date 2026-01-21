@@ -12,10 +12,7 @@ router = Router()
 @router.message(F.text == "/admin")
 async def admin_entry(message: Message):
     """Команда /admin - вход в админ-панель"""
-    if str(message.from_user.id) != str(settings.admin_id):
-        await message.answer("❌ У вас нет доступа к этой команде")
-        return
-
+    # Проверка через middleware
     await message.answer(
         "⚙️ <b>Админ-панель Barkery</b>\n\n"
         "Выберите раздел для управления:",

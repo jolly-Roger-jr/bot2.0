@@ -1,259 +1,195 @@
-# app/keyboards/user.py
+# app/keyboards/user.py - ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-def categories_keyboard(categories: list[str], user_id: int = None, cart_info: dict = None) -> InlineKeyboardMarkup:
-    """Клавиатура с категориями товаров и кнопкой корзины"""
-    builder = InlineKeyboardBuilder()
+def center_text(text: str, width: int = 20) -> str:
+    """Центрирование текста с помощью пробелов-заполнителей"""
+    spaces = " "  # Это специальный пробел, а не обычный
 
-    for category in categories:
-        builder.button(
-            text=f"📦 {category}",
-            callback_data=f"category:{category}"
-        )
+    if len(text) >= width:
+        return text
 
-    # Добавляем кнопку корзины, если передан user_id и есть информация о корзине
-    if user_id and cart_info:
-        if cart_info.get('has_items', False):
-            cart_text = f"🛒 Корзина ({cart_info['items_count']}) - {int(cart_info['total'])} RSD"
-        else:
-            cart_text = "🛒 Корзина (пуста)"
+    total_spaces = width - len(text)
+    left_spaces = total_spaces // 2
+    right_spaces = total_spaces - left_spaces
 
-        builder.button(
-            text=cart_text,
-            callback_data="show_cart"
-        )
-    elif user_id:
-        # Если нет информации о корзине, показываем простую кнопку
-        builder.button(
-            text="🛒 Корзина",
-            callback_data="show_cart"
-        )
-
-    builder.adjust(1)
-    return builder.as_markup()
+    return f"{spaces * left_spaces}{text}{spaces * right_spaces}"
 
 
-def products_keyboard(products, category: str, show_unavailable: bool = False,
-                      user_id: int = None, cart_info: dict = None) -> InlineKeyboardMarkup:
-    """Клавиатура с товарами категории и кнопкой корзины"""
-    builder = InlineKeyboardBuilder()
-
-    for product in products:
-        if product.available and product.stock_grams > 0:
-            # Доступные товары ведут на детальную страницу
-            builder.button(
-                text=f"✅ {product.name} - {product.price} RSD/100г",
-                callback_data=f"product_detail:{product.id}:{category}"
-            )
-        elif show_unavailable:
-            # Недоступные товары (только если show_unavailable=True)
-            builder.button(
-                text=f"❌ {product.name} - {product.price} RSD/100г",
-                callback_data=f"product:unavailable:{product.id}"
-            )
-
-    # Кнопка назад к категориям
-    builder.button(
-        text="🔙 Назад к категориям",
-        callback_data="back_to_categories"
-    )
-
-    # Добавляем кнопку корзины
-    if user_id and cart_info:
-        if cart_info.get('has_items', False):
-            cart_text = f"🛒 Корзина ({cart_info['items_count']}) - {int(cart_info['total'])} RSD"
-        else:
-            cart_text = "🛒 Корзина (пуста)"
-
-        builder.button(
-            text=cart_text,
-            callback_data="show_cart"
-        )
-    elif user_id:
-        builder.button(
-            text="🛒 Корзина",
-            callback_data="show_cart"
-        )
-
-    builder.adjust(1)
-    return builder.as_markup()
+def create_centered_button(text: str, callback_data: str) -> list:
+    """Создает центрированную кнопку с заполнителями"""
+    centered_text = center_text(f"    {text}    ", 25)
+    return [InlineKeyboardButton(text=centered_text, callback_data=callback_data)]
 
 
-def product_detail_keyboard(product_id: int, category: str, price: float,
-                            in_cart_qty: int = 0, stock_grams: int = 0) -> InlineKeyboardMarkup:
-    """Клавиатура для детальной страницы товара согласно ТЗ"""
-    builder = InlineKeyboardBuilder()
+def categories_keyboard(categories, user_id=None, cart_info=None):
+    """Клавиатура категорий с центрированием"""
+    keyboard = []
 
-    if in_cart_qty > 0:
-        # Если товар уже в корзине - ОДНА кнопка "🛒" согласно ТЗ
-        builder.button(
-            text=f"🛒 В корзине ({in_cart_qty}г)",
-            callback_data=f"cart:manage:{product_id}"
-        )
-    else:
-        # Если товара нет в корзине - кнопки +/-100г согласно ТЗ
-        builder.button(
-            text="➖100г",
-            callback_data=f"qty:dec:{product_id}:{category}:100"
-        )
+    dog_emojis = ["🐕", "🐩", "🦮", "🐕‍🦺", "🐶", "🧸"]
 
-        builder.button(
-            text="100г",  # Начальное значение
-            callback_data="noop"
-        )
+    for i, category in enumerate(categories):
+        emoji = dog_emojis[i % len(dog_emojis)]
+        keyboard.append(create_centered_button(f"{emoji} {category}", f"category:{category}"))
 
-        builder.button(
-            text="➕100г",
-            callback_data=f"qty:inc:{product_id}:{category}:100"
-        )
+    keyboard.append([InlineKeyboardButton(text="              ", callback_data="noop")])
 
-        # Кнопка добавления в корзину
-        total_price = price * 100 / 100  # 100г по цене за 100г
-        builder.button(
-            text=f"🛒 Добавить 100г ({int(total_price)} RSD)",
-            callback_data=f"cart:add:{product_id}:100:{category}"
-        )
-
-    # Кнопка назад к товарам категории
-    builder.button(
-        text="🔙 Назад к товарам",
-        callback_data=f"category:{category}"
-    )
-
-    if in_cart_qty > 0:
-        builder.adjust(1, 1)  # Одна кнопка "В корзине", потом "Назад"
-    else:
-        builder.adjust(3, 1, 1)  # Три кнопки в ряд (+/-/100г), потом кнопка добавления, потом назад
-
-    return builder.as_markup()
-
-
-def update_quantity_keyboard(product_id: int, category: str, price: float,
-                             current_qty: int, stock_grams: int) -> InlineKeyboardMarkup:
-    """Обновленная клавиатура с текущим количеством"""
-    builder = InlineKeyboardBuilder()
-
-    # Проверяем минимальное количество (не менее 100г)
-    if current_qty <= 100:
-        builder.button(
-            text="➖100г",
-            callback_data="noop"  # Неактивная кнопка
-        )
-    else:
-        builder.button(
-            text="➖100г",
-            callback_data=f"qty:dec:{product_id}:{category}:{current_qty}"
-        )
-
-    builder.button(
-        text=f"{current_qty}г",
-        callback_data="noop"
-    )
-
-    # Проверяем максимальное количество (не более остатков)
-    if current_qty + 100 > stock_grams:
-        builder.button(
-            text="➕100г",
-            callback_data="noop"  # Неактивная кнопка
-        )
-    else:
-        builder.button(
-            text="➕100г",
-            callback_data=f"qty:inc:{product_id}:{category}:{current_qty}"
-        )
-
-    # Кнопка добавления в корзину
-    total_price = price * current_qty / 100
-    builder.button(
-        text=f"🛒 Добавить ({int(total_price)} RSD)",
-        callback_data=f"cart:add:{product_id}:{current_qty}:{category}"
-    )
-
-    # Кнопка назад к товарам категории
-    builder.button(
-        text="🔙 Назад к товарам",
-        callback_data=f"category:{category}"
-    )
-
-    builder.adjust(3, 1, 1)
-    return builder.as_markup()
-
-
-def cart_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для корзины"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="❌ Очистить корзину", callback_data="cart:clear"),
-                InlineKeyboardButton(text="✅ Оформить заказ", callback_data="cart:show")
-            ],
-            [
-                InlineKeyboardButton(text="🔍 Проверить наличие", callback_data="cart:check_availability")
-            ],
-            [
-                InlineKeyboardButton(text="🔙 Назад в каталог", callback_data="back_to_categories")
-            ]
-        ]
-    )
-
-
-def cart_item_management_keyboard(product_id: int, current_qty: int, max_qty: int) -> InlineKeyboardMarkup:
-    """Клавиатура управления товаром в корзине с шагом 100г"""
-    buttons = []
-
-    # Проверяем, чтобы не было отрицательных значений
-    safe_current_qty = max(100, current_qty)  # Минимум 100г
-
-    # Кнопки изменения количества (шаг 100г)
-    buttons.append([
-        InlineKeyboardButton(text="➖100г", callback_data=f"cart:update:{product_id}:{safe_current_qty - 100}"),
-        InlineKeyboardButton(text=f"{safe_current_qty}г", callback_data="noop"),
-        InlineKeyboardButton(text="➕100г", callback_data=f"cart:update:{product_id}:{safe_current_qty + 100}")
-    ])
-
-    # Кнопка удаления
-    buttons.append([
-        InlineKeyboardButton(text="🗑 Удалить из корзины", callback_data=f"cart:remove:{product_id}")
-    ])
-
-    # Кнопка назад
-    buttons.append([
-        InlineKeyboardButton(text="🔙 Назад в корзину", callback_data="show_cart")
-    ])
-
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def confirm_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура подтверждения заказа"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Подтвердить заказ", callback_data="order:confirm"),
-                InlineKeyboardButton(text="❌ Отменить", callback_data="order:cancel")
-            ]
-        ]
-    )
-
-
-def back_to_cart_keyboard() -> InlineKeyboardMarkup:
-    """Кнопка возврата в корзину"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Вернуться в корзину", callback_data="show_cart")]
-        ]
-    )
-
-
-def get_cart_button(cart_info: dict = None) -> list[list[InlineKeyboardButton]]:
-    """
-    Получить кнопку корзины как отдельный элемент для вставки в другие клавиатуры
-    """
     if cart_info and cart_info.get('has_items', False):
-        text = f"🛒 Корзина ({cart_info['items_count']}) - {int(cart_info['total'])} RSD"
+        keyboard.append(create_centered_button(f"🛍️ Корзина ({cart_info['items_count']})", "show_cart"))
     else:
-        text = "🛒 Корзина"
+        keyboard.append(create_centered_button("🛍️ Корзина", "show_cart"))
 
-    return [[InlineKeyboardButton(text=text, callback_data="show_cart")]]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def product_detail_keyboard(product_id, category, price, in_cart_qty=0, stock_grams=0):
+    """Карточка товара с центрированными кнопками +/-"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [  # СТРОКА 1: Кнопки +/- с заполнителями
+                InlineKeyboardButton(
+                    text="    ➖    ",
+                    callback_data=f"qty:dec:{product_id}:{category}:{in_cart_qty}" if in_cart_qty > 0 else "noop"
+                ),
+                InlineKeyboardButton(
+                    text=f" {in_cart_qty}г ",
+                    callback_data="noop"
+                ),
+                InlineKeyboardButton(
+                    text="    ➕    ",
+                    callback_data=f"qty:inc:{product_id}:{category}:{in_cart_qty}"
+                )
+            ],
+            create_centered_button(  # СТРОКА 2
+                f"🛒 В корзину ({price * max(100, in_cart_qty) / 100:.0f} RSD)",
+                f"cart:add:{product_id}:{max(100, in_cart_qty)}:{category}"
+            ),
+            create_centered_button("📦 К товарам", f"category:{category}")  # СТРОКА 3
+        ]
+    )
+
+
+def cart_keyboard():
+    """Клавиатура корзины"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            create_centered_button("✅ Оформить заказ", "cart:show"),
+            create_centered_button("🗑️ Очистить корзину", "cart:clear"),
+            [InlineKeyboardButton(text="              ", callback_data="noop")],
+            create_centered_button("🏠 В категории", "back_to_categories")
+        ]
+    )
+
+
+def update_quantity_keyboard(product_id, category, price, current_qty, stock_grams):
+    """Клавиатура для изменения количества"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [  # СТРОКА 1
+                InlineKeyboardButton(
+                    text="    ➖    ",
+                    callback_data=f"qty:dec:{product_id}:{category}:{current_qty}" if current_qty > 0 else "noop"
+                ),
+                InlineKeyboardButton(
+                    text=f" {current_qty}г ",
+                    callback_data="noop"
+                ),
+                InlineKeyboardButton(
+                    text="    ➕    ",
+                    callback_data=f"qty:inc:{product_id}:{category}:{current_qty}"
+                )
+            ],
+            create_centered_button(  # СТРОКА 2
+                f"🛒 В корзину ({price * max(100, current_qty) / 100:.0f} RSD)",
+                f"cart:add:{product_id}:{max(100, current_qty)}:{category}"
+            ),
+            create_centered_button("🔙 Назад к товару", f"product_detail:{product_id}:{category}")
+        ]
+    )
+
+
+def cart_item_management_keyboard(product_id, current_qty, stock_grams):
+    """Управление товаром в корзине"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [  # СТРОКА 1
+                InlineKeyboardButton(
+                    text="    ➖    ",
+                    callback_data=f"cart:update:{product_id}:{max(100, current_qty - 100)}"
+                ),
+                InlineKeyboardButton(
+                    text=f" {current_qty}г ",
+                    callback_data="noop"
+                ),
+                InlineKeyboardButton(
+                    text="    ➕    ",
+                    callback_data=f"cart:update:{product_id}:{current_qty + 100}"
+                )
+            ],
+            create_centered_button("❌ Удалить", f"cart:remove:{product_id}"),
+            [InlineKeyboardButton(text="              ", callback_data="noop")],
+            create_centered_button("🛒 Назад в корзину", "show_cart")
+        ]
+    )
+
+
+def confirm_keyboard():
+    """Подтверждение заказа"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            create_centered_button("✅ Подтвердить заказ", "order:confirm"),
+            create_centered_button("❌ Отменить", "order:cancel")
+        ]
+    )
+
+
+def order_success_keyboard():
+    """Клавиатура после успешного оформления заказа"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            create_centered_button("🏠 В главное меню", "main_menu"),
+            create_centered_button("📦 Продолжить покупки", "catalog")
+        ]
+    )
+
+
+def back_to_cart_keyboard():
+    """Клавиатура для возврата в корзину"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            create_centered_button("🛒 Вернуться в корзину", "show_cart")
+        ]
+    )
+
+
+def get_cart_button():
+    """Кнопка корзины для меню"""
+    return InlineKeyboardButton(text="🛒 Корзина", callback_data="show_cart")
+
+
+def products_keyboard(products, category, show_unavailable=False, user_id=None, cart_info=None):
+    """Список товаров"""
+    keyboard = []
+
+    food_emojis = ["🍖", "🥩", "🦴", "🍗", "🥓", "🧀"]
+
+    for i, product in enumerate(products):
+        if product.available and product.stock_grams > 0:
+            emoji = food_emojis[i % len(food_emojis)]
+            keyboard.append(create_centered_button(
+                f"{emoji} {product.name} - {product.price} RSD",
+                f"product_detail:{product.id}:{category}"
+            ))
+
+    keyboard.append([InlineKeyboardButton(text="              ", callback_data="noop")])
+    keyboard.append(create_centered_button("🏠 Назад к категориям", "back_to_categories"))
+
+    if cart_info and cart_info.get('has_items', False):
+        keyboard.append(create_centered_button(
+            f"🛍️ Корзина ({cart_info['items_count']})",
+            callback_data="show_cart"
+        ))
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
