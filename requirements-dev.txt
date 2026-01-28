@@ -1,4 +1,0 @@
-# Тестовые зависимости
-pytest==7.4.4
-pytest-asyncio==0.21.1
-packaging==24.0

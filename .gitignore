@@ -1,21 +1,34 @@
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
-.env
-.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
 venv/
+.env
+.venv
 env/
-
-# Database files (если используете SQLite)
-*.db
-*.sqlite3
-
-# Logs
-*.log
-logs/
+ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
@@ -32,7 +45,33 @@ logs/
 ehthumbs.db
 Thumbs.db
 
-# Config files with secrets
-config.json
-credentials.json
-token.pickle
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Backups
+*backup*.py
+*_backup*.py
+backup_*.py
+
+# Test and temporary files
+test_*.py
+*_test.py
+fix_*.py
+*_fix*.py
+create_*.py
+update_*.py
+debug_*.py
+check_*.py
+
+# Logs
+*.log
+logs/
+
+# Backups directory
+backups/
+
+# Trash
+.trash/
