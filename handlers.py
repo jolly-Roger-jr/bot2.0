@@ -240,6 +240,107 @@ async def handle_back_text(message: Message):
     )
 
 @router.message(F.text == "⬅️ Главная")
+
+@router.message(F.text == "❌ Очистить")
+async def handle_clear_cart_text(message: Message):
+    """Обработка кнопки Очистить из Reply Keyboard"""
+    try:
+        user = await cart_service.get_or_create_user(message.from_user.id)
+        result = await cart_service.clear_cart(user.id)
+        
+        if result["success"]:
+            await message_manager.send_with_cleanup(
+                bot=message.bot,
+                chat_id=message.from_user.id,
+                text=f"✅ {result['message']}\n\nКорзина пуста."
+            )
+        else:
+            await message.answer("❌ Ошибка очистки корзины")
+        
+    except Exception as e:
+        logger.error(f"Ошибка очистки корзины: {e}")
+        await message.answer("❌ Ошибка очистки корзины")
+
+@router.message(F.text == "🛎️ Оформить")
+async def handle_order_create_text(message: Message, state: FSMContext):
+    """Обработка кнопки Оформить из Reply Keyboard"""
+    # Используем ту же логику, что и для inline кнопки
+    await start_order_from_message(message, state)
+
+async def start_order_from_message(message: Message, state: FSMContext):
+    """Начать оформление заказа из текстового сообщения"""
+    try:
+        user = await cart_service.get_or_create_user(message.from_user.id)
+        cart_data = await cart_service.get_cart(user.id)
+        
+        if not cart_data["items"]:
+            await message.answer("🛒 Корзина пуста!")
+            return
+        
+        # Сохраняем данные о корзине
+        await state.update_data(
+            user_id=user.id,
+            cart_items=cart_data["items"],
+            total_amount=cart_data["total_price"]
+        )
+        
+        # Проверяем, есть ли уже данные пользователя
+        if user.full_name and user.username:
+            # У пользователя уже есть данные - переходим к проверке адреса
+            await state.update_data(
+                pet_name=user.full_name,
+                telegram_login=user.username
+            )
+            await state.set_state(OrderForm.checking_address)
+            
+            # Получаем адреса пользователя
+            addresses = await user_service.get_user_addresses(user.id)
+            if addresses:
+                default_address = next((addr for addr in addresses if addr["is_default"]), addresses[0])
+                
+                await message.answer(
+                    f"🐕 Проверка адреса доставки\n\n"
+                    f"👤 Питомец: {user.full_name}\n"
+                    f"📱 Telegram: @{user.username or 'не указан'}\n\n"
+                    f"📍 Текущий адрес доставки:\n{default_address['address']}\n\n"
+                    "📋 Подтверждение адреса:\n"
+                    "Если адрес доставки НЕ ИЗМЕНИЛСЯ, напишите 'нет'\n"
+                    "Если адрес ИЗМЕНИЛСЯ, введите новый адрес доставки",
+                    parse_mode="HTML"
+                )
+            else:
+                # Нет адресов - запрашиваем новый
+                await state.set_state(OrderForm.new_address)
+                await message.answer(
+                    f"🐕 Введите адрес доставки\n\n"
+                    f"👤 Питомец: {user.full_name}\n"
+                    f"📱 Telegram: @{user.username or 'не указан'}\n\n"
+                    "📍 Введите адрес доставки:\n"
+                    "Улица, дом, квартира, район, город\n\n"
+                    "Пример: ул. Кнез Михаилова 15, кв. 23, Стари-Град, Белград"
+                )
+        else:
+            # У пользователя нет данных - запрашиваем все
+            await state.set_state(OrderForm.waiting_pet_name)
+            
+            items_text = "\n".join([
+                f"• {item['product_name']}: {item['quantity_grams']}г - {item['total_price']:.0f} RSD"
+                for item in cart_data["items"]
+            ])
+            
+            order_text = (
+                "🛎️ Оформление заказа\n\n"
+                f"Ваш заказ:\n{items_text}\n\n"
+                f"Итого: {cart_data['total_price']:.0f} RSD\n\n"
+                "Для оформления заказа нужна дополнительная информация.\n\n"
+                "🐕 Шаг 1 из 3: Как зовут вашего питомца?"
+            )
+            
+            await message.answer(order_text)
+        
+    except Exception as e:
+        logger.error(f"Ошибка начала заказа: {e}")
+        await message.answer("❌ Ошибка")
 async def handle_home_text(message: Message):
     """Обработка кнопки Главная из Reply Keyboard"""
     await message_manager.send_with_cleanup(
@@ -545,21 +646,21 @@ async def add_to_cart(callback: CallbackQuery):
         product_id = int(parts[1])
         quantity = int(parts[2])
         category_id = int(parts[3])
-        
+
         if quantity <= 0:
             await callback.answer("⚠️ Количество должно быть больше 0", show_alert=True)
             return
-        
+
         user = await cart_service.get_or_create_user(callback.from_user.id)
         result = await cart_service.add_to_cart(user.id, product_id, quantity)
-        
+
         if result["success"]:
             # Получаем актуальные данные о товаре
             product = await catalog_service.get_product(product_id)
-            
+
             # Обнуляем счетчик в карточке товара после добавления
             new_qty = 0  # Сбрасываем счетчик!
-            
+
             # Формируем обновленный текст
             description = product.get("description", "") or ""
             text = (
@@ -570,24 +671,28 @@ async def add_to_cart(callback: CallbackQuery):
                 f"🛒 В корзине: {quantity}г\n\n"  # Показываем сколько ТОЛЬКО ЧТО добавили
                 "Выберите количество:"
             )
-            
+
             # Обновляем И текст И клавиатуру (счетчик = 0)
             keyboard = product_card_keyboard(product_id, category_id, new_qty)
+            # Пробуем обновить текст, если сообщение текстовое
             try:
                 await callback.message.edit_text(text, reply_markup=keyboard)
-            except Exception as e:
-                # Если не удалось обновить текст, обновляем хотя бы клавиатуру
-                logger.warning(f"Не удалось обновить текст: {e}")
-                await callback.message.edit_reply_markup(reply_markup=keyboard)
+            except Exception as text_error:
+                # Если не текстовое сообщение, пробуем обновить подпись фото
+                try:
+                    await callback.message.edit_caption(caption=text, reply_markup=keyboard)
+                except Exception as caption_error:
+                    # Если не фото с подписью, обновляем только клавиатуру
+                    logger.warning(f"Не удалось обновить текст/подпись: {text_error}, {caption_error}")
+                    await callback.message.edit_reply_markup(reply_markup=keyboard)
             
             await callback.answer(result["message"])
         else:
             await callback.answer(result["error"], show_alert=True)
-            
+
     except Exception as e:
         logger.error(f"Ошибка добавления в корзину: {e}")
         await callback.answer("❌ Ошибка добавления", show_alert=True)
-
 @router.callback_query(F.data.startswith("cart_remove:"))
 async def remove_from_cart(callback: CallbackQuery):
     """Удалить товар из корзины"""
