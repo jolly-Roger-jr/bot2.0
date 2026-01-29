@@ -66,20 +66,12 @@ def products_keyboard(products: list, category_id: int) -> InlineKeyboardMarkup:
     
     return builder.as_markup()
 
-def product_card_keyboard(product_id: int, category_id: int, current_qty: int = 0, unit_type: str = 'grams', measurement_step: int = 100) -> InlineKeyboardMarkup:
+def product_card_keyboard(product_id: int, category_id: int, current_qty: int = 0) -> InlineKeyboardMarkup:
     """Карточка товара с кнопками +/-"""
     builder = InlineKeyboardBuilder()
     
-    # Количество в единицах измерения
-    if unit_type == 'grams':
-        qty_units = current_qty // measurement_step
-        unit_text = f'{measurement_step}г'
-        unit_symbol = 'г'
-    else:  # pieces
-        qty_units = current_qty
-        unit_text = 'шт'
-        unit_symbol = 'шт'
-    
+    # Количество в единицах по 100г
+    qty_100g = current_qty // 100
     
     # Ряд 1: кнопки +/-
     builder.row(
@@ -88,7 +80,7 @@ def product_card_keyboard(product_id: int, category_id: int, current_qty: int = 
             callback_data=f"qty_dec:{product_id}:{category_id}"
         ),
         InlineKeyboardButton(
-            text=f"{qty_units} {unit_symbol}",
+            text=f"{qty_100g} × 100г",
             callback_data=f"qty_info:{product_id}:{current_qty}"
         ),
         InlineKeyboardButton(
@@ -98,11 +90,11 @@ def product_card_keyboard(product_id: int, category_id: int, current_qty: int = 
     )
     
     # Ряд 2: Добавить в корзину
-    add_qty = qty_units * measurement_step
+    add_qty = qty_100g * 100
     if add_qty > 0:
         builder.row(
             InlineKeyboardButton(
-                text=f'🛒 Добавить ({add_qty}{unit_symbol})',
+                text=f"🛒 Добавить ({add_qty}г)",
                 callback_data=f"cart_add:{product_id}:{add_qty}:{category_id}"
             )
         )
@@ -186,10 +178,6 @@ def admin_categories_keyboard(categories: list) -> InlineKeyboardMarkup:
                 callback_data=f"admin_category_products:{category['id']}"
             ),
             InlineKeyboardButton(
-                text="✏️",
-                callback_data=f"admin_edit_category:{category['id']}"
-            ),
-            InlineKeyboardButton(
                 text="❌",
                 callback_data=f"admin_delete_category:{category['id']}"
             )
@@ -241,23 +229,8 @@ def admin_product_management_keyboard(products: list, category_id: int) -> Inlin
                 callback_data=f"admin_toggle_product:{product['id']}:{category_id}"
             ),
             InlineKeyboardButton(
-                text="💰 Цена",
-                callback_data=f"admin_edit_product_price:{product['id']}:{category_id}"
-            ),
-            InlineKeyboardButton(
                 text="📦 Остатки",
                 callback_data=f"admin_update_stock:{product['id']}:{category_id}"
-            )
-        )
-        
-        builder.row(
-            InlineKeyboardButton(
-                text="✏️ Название",
-                callback_data=f"admin_edit_product_name:{product['id']}:{category_id}"
-            ),
-            InlineKeyboardButton(
-                text="📏 Единицы",
-                callback_data=f"admin_edit_product_units:{product['id']}:{category_id}"
             ),
             InlineKeyboardButton(
                 text="❌ Удалить",
@@ -268,97 +241,6 @@ def admin_product_management_keyboard(products: list, category_id: int) -> Inlin
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад к категориям", callback_data="admin_products"),
         InlineKeyboardButton(text="🏠 В главное", callback_data="admin_back")
-    )
-    
-    return builder.as_markup()
-
-
-def admin_product_edit_keyboard(product_id: int, category_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура редактирования товара"""
-    builder = InlineKeyboardBuilder()
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="✏️ Изменить название",
-            callback_data=f"admin_edit_product_name:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Изменить цену",
-            callback_data=f"admin_edit_product_price:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="📦 Изменить остатки",
-            callback_data=f"admin_edit_product_stock:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="📏 Изменить единицы",
-            callback_data=f"admin_edit_product_units:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="⬅️ Назад",
-            callback_data=f"admin_category_products:{category_id}"
-        ),
-        InlineKeyboardButton(
-            text="🏠 В главное",
-            callback_data="admin_back"
-        )
-    )
-    
-    return builder.as_markup()
-
-def admin_product_edit_keyboard(product_id: int, category_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура редактирования товара"""
-    builder = InlineKeyboardBuilder()
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="✏️ Изменить название",
-            callback_data=f"admin_edit_product_name:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Изменить цену",
-            callback_data=f"admin_edit_product_price:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="📦 Изменить остатки",
-            callback_data=f"admin_edit_product_stock:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="📏 Изменить единицы",
-            callback_data=f"admin_edit_product_units:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="⬅️ Назад",
-            callback_data=f"admin_category_products:{category_id}"
-        ),
-        InlineKeyboardButton(
-            text="🏠 В главное",
-            callback_data="admin_back"
-        )
     )
     
     return builder.as_markup()

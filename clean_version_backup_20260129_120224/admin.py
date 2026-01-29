@@ -1,6 +1,5 @@
 """
-ПОЛНАЯ АДМИНКА Barkery Shop
-Версия 2.0 - с управлением категориями и товарами
+Админка Barkery Shop (полная версия)
 """
 import logging
 from aiogram import Router, F
@@ -8,27 +7,17 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from sqlalchemy import select, func
-from sqlalchemy.orm import joinedload
+from sqlalchemy import select
 
-from database import get_session, Order, Product, Category, User
+from database import get_session, Product, Category
 from config import settings
-from keyboards import (
-    admin_main_keyboard,
-    admin_categories_keyboard,
-    admin_products_keyboard,
-    admin_product_management_keyboard
-)
+from keyboards import admin_main_keyboard, admin_categories_keyboard, admin_products_keyboard, admin_product_management_keyboard
 
 logger = logging.getLogger(__name__)
 admin_router = Router()
 
-# ========== ОБЩИЕ ФУНКЦИИ ==========
-
 async def is_admin(user_id: int) -> bool:
     return user_id == settings.admin_id
-
-# ========== СОСТОЯНИЯ ==========
 
 class AdminStates(StatesGroup):
     waiting_category_name = State()
@@ -36,17 +25,12 @@ class AdminStates(StatesGroup):
     waiting_product_description = State()
     waiting_product_price = State()
     waiting_product_stock = State()
-    waiting_product_stock_update = State()
     waiting_product_category = State()
-    waiting_product_image = State()
 
-# ========== ГЛАВНАЯ АДМИН ПАНЕЛЬ ==========
-
+# Главная админ панель
 @admin_router.message(Command("admin"))
 async def admin_panel(message: Message):
     """Панель администратора"""
-    logger.info(f"🛠️ Запрос admin_panel от {message.from_user.id} ({message.from_user.username})")
-    
     if not await is_admin(message.from_user.id):
         await message.answer("❌ Доступ запрещен")
         return
@@ -57,8 +41,7 @@ async def admin_panel(message: Message):
         reply_markup=admin_main_keyboard()
     )
 
-# ========== УПРАВЛЕНИЕ КАТЕГОРИЯМИ ==========
-
+# Управление категориями
 @admin_router.callback_query(F.data == "admin_categories")
 async def admin_categories(callback: CallbackQuery):
     """Управление категориями"""
@@ -92,9 +75,10 @@ async def admin_categories(callback: CallbackQuery):
     
     await callback.answer()
 
+# Добавление категории
 @admin_router.callback_query(F.data == "admin_add_category")
-async def admin_add_category(callback: CallbackQuery, state: FSMContext):
-    """Добавление новой категории"""
+async def admin_add_category_handler(callback: CallbackQuery, state: FSMContext):
+    """Добавление категории"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
@@ -146,6 +130,7 @@ async def process_category_name(message: Message, state: FSMContext):
             reply_markup=admin_categories_keyboard(categories_list)
         )
 
+# Удаление категории
 @admin_router.callback_query(F.data.startswith("admin_delete_category:"))
 async def admin_delete_category_handler(callback: CallbackQuery):
     """Удаление категории"""
@@ -190,11 +175,10 @@ async def admin_delete_category_handler(callback: CallbackQuery):
             reply_markup=admin_categories_keyboard(categories_list)
         )
 
-# ========== УПРАВЛЕНИЕ ТОВАРАМИ ==========
-
+# Управление товарами
 @admin_router.callback_query(F.data == "admin_products")
 async def admin_products(callback: CallbackQuery):
-    """Управление товарами - выбор категории"""
+    """Управление товарами"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
@@ -217,14 +201,15 @@ async def admin_products(callback: CallbackQuery):
         
         await callback.message.edit_text(
             "🛒 Управление товарами\n\n"
-            f"Выберите категорию для управления товарами:",
+            f"Выберите категорию:",
             reply_markup=admin_products_keyboard(categories)
         )
     
     await callback.answer()
 
+# Товары в выбранной категории
 @admin_router.callback_query(F.data.startswith("admin_category_products:"))
-async def admin_category_products(callback: CallbackQuery):
+async def admin_category_products_handler(callback: CallbackQuery):
     """Товары в выбранной категории"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
@@ -261,9 +246,10 @@ async def admin_category_products(callback: CallbackQuery):
     
     await callback.answer()
 
+# Добавление товара
 @admin_router.callback_query(F.data == "admin_add_product")
-async def admin_add_product(callback: CallbackQuery, state: FSMContext):
-    """Добавление нового товара"""
+async def admin_add_product_handler(callback: CallbackQuery, state: FSMContext):
+    """Добавление товара"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
@@ -377,80 +363,6 @@ async def process_product_stock_create(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Введите число. Введите снова:")
 
-
-@admin_router.message(AdminStates.waiting_product_image)
-async def process_product_image(message: Message, state: FSMContext):
-    """Обработка изображения товара - упрощенная версия"""
-    try:
-        data = await state.get_data()
-        category_id = data.get("category_id")
-        
-        if not category_id:
-            await message.answer("❌ Ошибка: данные категории не найдены. Начните заново.")
-            await state.clear()
-            return
-        
-        # Получаем остальные данные
-        product_name = data["product_name"]
-        description = data.get("description", "")
-        price = data["price"]
-        stock = data["stock"]
-        
-        # Обрабатываем изображение
-        image_url = None
-        if message.photo:
-            # Сохраняем file_id фото
-            image_url = message.photo[-1].file_id
-            image_note = "✅ Изображение сохранено"
-        elif message.text and message.text.strip().lower() == "нет":
-            image_note = "✅ Без изображения"
-        else:
-            await message.answer("❌ Отправьте изображение или напишите 'нет'. Попробуйте снова:")
-            return
-        
-        # Создаем товар
-        from database import get_session, Product
-        
-        async with get_session() as session:
-            product = Product(
-                name=product_name,
-                description=description,
-                price=price,
-                stock_grams=stock,
-                category_id=category_id,
-                available=True,
-                image_url=image_url
-            )
-            
-            session.add(product)
-            await session.commit()
-        
-        await message.answer(
-            f"✅ Товар успешно создан!\n\n"
-            f"📦 Название: {product.name}\n"
-            f"📝 Описание: {description or 'Нет'}\n"
-            f"🖼️ Изображение: {image_note}\n"
-            f"💰 Цена: {product.price} RSD/100г\n"
-            f"⚖️ Количество: {product.stock_grams}г\n"
-            f"📂 Категория ID: {category_id}\n\n"
-            f"🆔 ID: {product.id}"
-        )
-        
-        await state.clear()
-        
-        # Возвращаем в админ панель
-        from keyboards import admin_main_keyboard
-        await message.answer(
-            "👑 Админ панель\n\nВыберите действие:",
-            reply_markup=admin_main_keyboard()
-        )
-        
-    except Exception as e:
-        logger.error(f"Ошибка создания товара: {e}")
-        await message.answer("❌ Ошибка при создании товара")
-        await state.clear()
-
-
 @admin_router.message(AdminStates.waiting_product_category)
 async def process_product_category_create(message: Message, state: FSMContext):
     """Обработка ID категории для нового товара"""
@@ -464,32 +376,66 @@ async def process_product_category_create(message: Message, state: FSMContext):
                 await message.answer(f"❌ Категория с ID {category_id} не найдена. Введите снова:")
                 return
         
-        await state.update_data(category_id=category_id)
-        await state.set_state(AdminStates.waiting_product_image)
+        # Получаем остальные данные
+        data = await state.get_data()
+        product_name = data["product_name"]
+        description = data.get("description", "")
+        price = data["price"]
+        stock = data["stock"]
+        
+        # Создаем товар
+        from database import get_session, Product
+        
+        async with get_session() as session:
+            product = Product(
+                name=product_name,
+                description=description,
+                price=price,
+                stock_grams=stock,
+                category_id=category_id,
+                available=True,
+                image_url=None  # Пока без изображения
+            )
+            
+            session.add(product)
+            await session.commit()
+            await session.refresh(product)
         
         await message.answer(
-            f"✅ Категория выбрана: {category.name}\n\n"
-            "Шаг 6 из 6: Отправьте изображение товара или напишите 'нет' если без изображения:"
+            f"✅ Товар успешно создан!\n\n"
+            f"📦 Название: {product.name}\n"
+            f"📝 Описание: {description or 'Нет'}\n"
+            f"💰 Цена: {product.price} RSD/100г\n"
+            f"⚖️ Количество: {product.stock_grams}г\n"
+            f"📂 Категория ID: {category_id} ({category.name})\n\n"
+            f"🆔 ID: {product.id}"
+        )
+        
+        await state.clear()
+        
+        # Возвращаем в админ панель
+        from keyboards import admin_main_keyboard
+        await message.answer(
+            "👑 Админ панель\n\nВыберите действие:",
+            reply_markup=admin_main_keyboard()
         )
         
     except ValueError:
         await message.answer("❌ Введите число (ID категории). Введите снова:")
+    except Exception as e:
+        logger.error(f"Ошибка создания товара: {e}")
+        await message.answer("❌ Ошибка при создании товара")
+        await state.clear()
 
-
-
-
+# Включение/выключение товара
 @admin_router.callback_query(F.data.startswith("admin_toggle_product:"))
-async def admin_toggle_product(callback: CallbackQuery):
+async def admin_toggle_product_handler(callback: CallbackQuery):
     """Включение/выключение товара"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
     
     parts = callback.data.split(":")
-    if len(parts) < 3:
-        await callback.answer("❌ Ошибка данных", show_alert=True)
-        return
-    
     product_id = int(parts[1])
     category_id = int(parts[2])
     
@@ -528,18 +474,15 @@ async def admin_toggle_product(callback: CallbackQuery):
             reply_markup=admin_product_management_keyboard(products_list, category_id)
         )
 
+# Обновление остатков товара
 @admin_router.callback_query(F.data.startswith("admin_update_stock:"))
-async def admin_update_stock(callback: CallbackQuery, state: FSMContext):
+async def admin_update_stock_handler(callback: CallbackQuery, state: FSMContext):
     """Обновление остатков товара"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
     
     parts = callback.data.split(":")
-    if len(parts) < 3:
-        await callback.answer("❌ Ошибка данных", show_alert=True)
-        return
-    
     product_id = int(parts[1])
     category_id = int(parts[2])
     
@@ -549,85 +492,32 @@ async def admin_update_stock(callback: CallbackQuery, state: FSMContext):
     )
     await state.set_state(AdminStates.waiting_product_stock)
     
-    await callback.message.edit_text(
-        "📦 Обновление остатков\n\n"
-        "Введите новое количество в граммах:"
-    )
+    async with get_session() as session:
+        product = await session.get(Product, product_id)
+        if product:
+            await callback.message.edit_text(
+                f"📦 Обновление остатков\n\n"
+                f"Товар: {product.name}\n"
+                f"Текущие остатки: {product.stock_grams}г\n\n"
+                "Введите новое количество в граммах:"
+            )
+        else:
+            await callback.message.edit_text(
+                "📦 Обновление остатков\n\n"
+                "Введите новое количество в граммах:"
+            )
+    
     await callback.answer()
 
-@admin_router.message(AdminStates.waiting_product_stock_update)
-async def process_product_stock(message: Message, state: FSMContext):
-    """Обработка количества товара"""
-    try:
-        stock = int(message.text.strip())
-        if stock < 0:
-            await message.answer("❌ Количество не может быть отрицательным. Введите снова:")
-            return
-        
-        data = await state.get_data()
-        
-        # Проверяем наличие product_id в данных
-        if "product_id" not in data:
-            await message.answer("❌ Ошибка: данные о товаре не найдены")
-            await state.clear()
-            return
-            
-        product_id = data["product_id"]
-        category_id = data.get("category_id", 1)
-        
-        async with get_session() as session:
-            product = await session.get(Product, product_id)
-            if not product:
-                await message.answer("❌ Товар не найден")
-                return
-            
-            product.stock_grams = stock
-            await session.commit()
-            
-            await message.answer(f"✅ Остатки товара '{product.name}' обновлены: {stock}г")
-            await state.clear()
-            
-            # Возвращаем к списку товаров
-            category = await session.get(Category, category_id)
-            stmt = select(Product).where(Product.category_id == category_id)
-            result = await session.execute(stmt)
-            products = result.scalars().all()
-        
-        products_list = [
-            {
-                "id": p.id,
-                "name": p.name,
-                "price": p.price,
-                "stock_grams": p.stock_grams,
-                "available": p.available
-            }
-            for p in products
-        ]
-        
-        await message.answer(
-            f"🛒 Товары категории: {category.name}\n\n"
-            f"Количество товаров: {len(products_list)}",
-            reply_markup=admin_product_management_keyboard(products_list, category_id)
-        )
-            
-    except ValueError:
-        await message.answer("❌ Введите число. Введите снова:")
-    except Exception as e:
-        logger.error(f"Ошибка обновления остатков: {e}")
-        await message.answer("❌ Ошибка при обновлении")
-
+# Удаление товара
 @admin_router.callback_query(F.data.startswith("admin_delete_product:"))
-async def admin_delete_product(callback: CallbackQuery):
+async def admin_delete_product_handler(callback: CallbackQuery):
     """Удаление товара"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
     
     parts = callback.data.split(":")
-    if len(parts) < 3:
-        await callback.answer("❌ Ошибка данных", show_alert=True)
-        return
-    
     product_id = int(parts[1])
     category_id = int(parts[2])
     
@@ -668,8 +558,7 @@ async def admin_delete_product(callback: CallbackQuery):
             reply_markup=admin_product_management_keyboard(products_list, category_id)
         )
 
-# ========== КНОПКА НАЗАД ==========
-
+# Назад в главное меню админки
 @admin_router.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery):
     """Назад в главное меню админки"""

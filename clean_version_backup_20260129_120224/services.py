@@ -210,10 +210,7 @@ class CatalogService:
                     "price": p.price,
                     "stock_grams": p.stock_grams,
                     "image_url": p.image_url,
-                    "available": p.available,
-                    "is_active": p.is_active,
-                    "unit_type": p.unit_type,
-                    "measurement_step": p.measurement_step
+                    "available": p.available
                 }
                 for p in products
             ]
@@ -231,27 +228,9 @@ class CatalogService:
                     "stock_grams": product.stock_grams,
                     "image_url": product.image_url,
                     "available": product.available,
-                    "is_active": product.is_active,
-                    "unit_type": product.unit_type,
-                    "measurement_step": product.measurement_step,
                     "category_id": product.category_id
                 }
             return None
-    
-    async def update_product(self, product_id: int, **kwargs) -> Dict:
-        """Обновить товар"""
-        async with get_session() as session:
-            product = await session.get(Product, product_id)
-            if not product:
-                return {"success": False, "error": "Товар не найден"}
-            
-            # Обновляем только переданные поля
-            for key, value in kwargs.items():
-                if hasattr(product, key):
-                    setattr(product, key, value)
-            
-            await session.commit()
-            return {"success": True, "product": product}
 
 
 class UserService:
@@ -272,7 +251,7 @@ class UserService:
                 {
                     "id": addr.id,
                     "address": addr.address,
-                    "is_active": addr.is_default,
+                    "is_default": addr.is_default,
                     "created_at": addr.created_at
                 }
                 for addr in addresses

@@ -125,11 +125,7 @@ async def show_categories(callback: CallbackQuery):
         categories = await catalog_service.get_categories()
         
         if not categories:
-            from keyboards import main_menu_keyboard
-            await callback.message.edit_text(
-                "📦 Каталог\n\nКатегории пока не добавлены.",
-                reply_markup=main_menu_keyboard()
-            )
+            await callback.message.edit_text("📦 Каталог\n\nКатегории пока не добавлены.")
             return
         
         await callback.message.edit_text(
@@ -590,7 +586,7 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
                 "📞 *Что дальше?*\n"
                 "1. Мы свяжемся с вами для подтверждения заказа\n"
                 "2. Подготовим ваши лакомства\n"
-                "3. Согласуем время и способ доставки\n\n"
+                "3. Доставим в течение 24 часов\n\n"
                 "*Спасибо за покупку!* 🐶"
             )
             

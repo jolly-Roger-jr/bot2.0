@@ -1,9 +1,6 @@
 """
-
 Унифицированные хендлеры для Barkery Shop
-
 """
-
 import logging
 import asyncio
 from aiogram import Router, F
@@ -125,11 +122,7 @@ async def show_categories(callback: CallbackQuery):
         categories = await catalog_service.get_categories()
         
         if not categories:
-            from keyboards import main_menu_keyboard
-            await callback.message.edit_text(
-                "📦 Каталог\n\nКатегории пока не добавлены.",
-                reply_markup=main_menu_keyboard()
-            )
+            await callback.message.edit_text("📦 Каталог\n\nКатегории пока не добавлены.")
             return
         
         await callback.message.edit_text(
@@ -202,7 +195,7 @@ async def show_product(callback: CallbackQuery):
             "Выберите количество:"
         )
         
-        keyboard = product_card_keyboard(product_id, category_id, temp_qty, product.get("unit_type", "grams"), product.get("measurement_step", 100))
+        keyboard = product_card_keyboard(product_id, category_id, temp_qty)
         await callback.message.edit_text(text, reply_markup=keyboard)
         
     except Exception as e:
@@ -286,7 +279,7 @@ async def handle_quantity(callback: CallbackQuery):
             "Выберите количество:"
         )
         
-        keyboard = product_card_keyboard(product_id, category_id, new_temp, product.get("unit_type", "grams"), product.get("measurement_step", 100))
+        keyboard = product_card_keyboard(product_id, category_id, new_temp)
         await callback.message.edit_text(text, reply_markup=keyboard)
         
         # Показываем информацию о предварительном количестве
@@ -304,21 +297,21 @@ async def add_to_cart(callback: CallbackQuery):
         product_id = int(parts[1])
         quantity = int(parts[2])
         category_id = int(parts[3])
-
+        
         if quantity <= 0:
             await callback.answer("⚠️ Сначала выберите количество", show_alert=True)
             return
-
+        
         user = await cart_service.get_or_create_user(callback.from_user.id)
         result = await cart_service.add_to_cart(user.id, product_id, quantity)
-
+        
         if result["success"]:
             # Сбрасываем временное количество
             reset_temp_quantity(callback.from_user.id, product_id)
-
+            
             # Обновляем отображение с новым количеством в корзине
             product = await catalog_service.get_product(product_id)
-
+            
             # Получаем обновленное количество в корзине
             async with get_session() as session:
                 stmt = select(CartItem).where(
@@ -328,7 +321,7 @@ async def add_to_cart(callback: CallbackQuery):
                 result2 = await session.execute(stmt)
                 cart_item = result2.scalar_one_or_none()
                 current_in_cart = cart_item.quantity if cart_item else 0
-
+            
             # Формируем текст
             description = product.get("description", "") or ""
             text = (
@@ -339,14 +332,14 @@ async def add_to_cart(callback: CallbackQuery):
                 f"✅ В корзине: {current_in_cart}г\n\n"
                 f"Товар добавлен в корзину!"
             )
-
+            
             # Обновляем сообщение с сброшенным счетчиком
-            keyboard = product_card_keyboard(product_id, category_id, 0, product.get("unit_type", "grams"), product.get("measurement_step", 100))
+            keyboard = product_card_keyboard(product_id, category_id, 0)
             await callback.message.edit_text(text, reply_markup=keyboard)
             await callback.answer(f"✅ Добавлено в корзину: {quantity}г")
         else:
             await callback.answer(result["error"], show_alert=True)
-
+            
     except Exception as e:
         logger.error(f"Ошибка добавления в корзину: {e}")
         await callback.answer("❌ Ошибка добавления", show_alert=True)
@@ -590,7 +583,7 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
                 "📞 *Что дальше?*\n"
                 "1. Мы свяжемся с вами для подтверждения заказа\n"
                 "2. Подготовим ваши лакомства\n"
-                "3. Согласуем время и способ доставки\n\n"
+                "3. Доставим в течение 24 часов\n\n"
                 "*Спасибо за покупку!* 🐶"
             )
             
