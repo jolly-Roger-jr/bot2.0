@@ -59,7 +59,7 @@ class CartService:
                     stock = product.stock_grams
                     unit_text = 'г'
                 else:  # pieces
-                    stock = product.stock_grams  # для штучных товаров хранится количество
+                    stock = product.stock_grams  # для штучных товаров stock_grams хранит штуки
                     unit_text = 'шт'
                 
                 if quantity > stock:
@@ -117,7 +117,7 @@ class CartService:
                     if product and new_quantity > product.stock_grams:
                         return {
                             "success": False,
-                            "error": f"Максимально доступно: {product.stock_grams}" + ("г" if product.unit_type == "grams" else "шт"),
+                            "error": f"Максимально доступно: {product.stock_grams}{"г" if product.unit_type == "grams" else "шт"}",
                             "max_quantity": product.stock_grams
                         }
                     

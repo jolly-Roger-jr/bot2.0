@@ -1,16 +1,13 @@
 """
-Barkery Bot - handlers.py
-ПОЛНАЯ РАБОЧАЯ ВЕРСИЯ
-Восстановлена: 2026-01-30
+Унифицированные хендлеры для Barkery Shop
+Версия с полной поддержкой штучных и весовых товаров
 """
 import logging
-import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.exceptions import TelegramBadRequest
 
 from keyboards import (
     main_menu_keyboard,
@@ -20,8 +17,8 @@ from keyboards import (
     cart_keyboard,
     order_confirmation_keyboard
 )
-from services import cart_service, catalog_service, user_service
-from database import get_session, Product, CartItem, User
+from services import cart_service, catalog_service
+from database import get_session, CartItem
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
@@ -43,23 +40,29 @@ def get_temp_quantity_key(user_id: int, product_id: int) -> str:
     """Ключ для хранения временного количества"""
     return f"{user_id}_{product_id}"
 
-def update_temp_quantity(user_id: int, product_id: int, delta: int) -> int:
-    """Обновить временное количество с проверками"""
-    key = get_temp_quantity_key(user_id, product_id)
-    current = temp_quantities.get(key, 0)
-    new_quantity = current + delta
-    
-    # Не может быть меньше 0
-    if new_quantity < 0:
-        new_quantity = 0
-    
-    temp_quantities[key] = new_quantity
-    return new_quantity
 
-def reset_temp_quantity(user_id: int, product_id: int):
-    """Сбросить временное количество"""
-    key = get_temp_quantity_key(user_id, product_id)
-    temp_quantities[key] = 0
+def format_product_display(product: dict, current_in_cart: int = 0) -> str:
+    """Форматировать отображение товара"""
+    description = product.get('description', '') or ''
+    unit_type = product.get('unit_type', 'grams')
+    unit_suffix = "г" if unit_type == "grams" else "шт"
+    
+    # Цена в зависимости от типа товара
+    if unit_type == 'grams':
+        price_text = f"💰 Цена: {product['price']} RSD/100г\n"
+    else:
+        price_text = f"💰 Цена: {product['price']} RSD/шт\n"
+    
+    text = f"🦴 {product['name']}\n\n"
+    if description:
+        text += f"{description}\n\n"
+    
+    text += price_text
+    text += f"📦 В наличии: {product['stock_grams']}{unit_suffix}\n"
+    text += f"🛒 В корзине: {current_in_cart}{unit_suffix}\n\n"
+    text += "Выберите количество:"
+    
+    return text
 
 # ========== ОСНОВНЫЕ КОМАНДЫ ==========
 
@@ -79,10 +82,7 @@ async def cmd_start(message: Message):
             "Используйте кнопки ниже для навигации:"
         )
         
-        await message.answer(
-            welcome_text,
-            reply_markup=main_menu_keyboard()
-        )
+        await message.answer(welcome_text, reply_markup=main_menu_keyboard())
         
     except Exception as e:
         logger.error(f"Ошибка в /start: {e}")
@@ -182,40 +182,27 @@ async def show_product(callback: CallbackQuery):
             cart_item = result.scalar_one_or_none()
             current_in_cart = cart_item.quantity if cart_item else 0
 
-        # Получаем временное количество (предварительное)
+        # Получаем временное количество
         temp_key = get_temp_quantity_key(callback.from_user.id, product_id)
         temp_qty = temp_quantities.get(temp_key, 0)
 
         # Формируем текст
-        description = product.get("description", "") or ""
-        text = (
-            f"🦴 {product['name']}\n\n"
-            f"{description}\n\n"
+        text = format_product_display(product, current_in_cart)
+        
+        # Создаем клавиатуру
+        keyboard = product_card_keyboard(
+            product_id, 
+            category_id, 
+            temp_qty, 
+            product.get("unit_type", "grams"), 
+            product.get("measurement_step", 100)
         )
         
-        # Отображение цены в зависимости от типа товара
-        if product.get('unit_type', 'grams') == 'grams':
-            price_text = f"💰 Цена: {product['price']} RSD/100г\n"
-        else:
-            price_text = f"💰 Цена: {product['price']} RSD/шт\n"
-        
-        text += price_text
-        text += f"📦 В наличии: {product['stock_grams']}{'г' if product.get('unit_type', 'grams') == 'grams' else 'шт'}\n"
-        text += f"🛒 В корзине: {current_in_cart}{'г' if product.get('unit_type', 'grams') == 'grams' else 'шт'}\n\n"
-        text += "Выберите количество:"
-
-        keyboard = product_card_keyboard(product_id, category_id, temp_qty, product.get("unit_type", "grams"), product.get("measurement_step", 100))
         await callback.message.edit_text(text, reply_markup=keyboard)
         
     except Exception as e:
         logger.error(f"Ошибка показа товара: {e}")
         await callback.answer("❌ Ошибка загрузки товара", show_alert=True)
-
-@router.callback_query(F.data.startswith("back_to_products:"))
-async def back_to_products(callback: CallbackQuery):
-    """Назад к товарам категории"""
-    category_id = int(callback.data.split(":")[1])
-    await show_products(callback)
 
 # ========== УПРАВЛЕНИЕ КОЛИЧЕСТВОМ ==========
 
@@ -271,8 +258,11 @@ async def handle_quantity(callback: CallbackQuery):
         if total_qty > product['stock_grams']:
             max_can_add = product['stock_grams'] - current_in_cart
             new_temp = max_can_add
-            unit_suffix = "г" if product.get('unit_type', 'grams') == 'grams' else "шт"
-            await callback.answer(f"❌ Максимально можно добавить: {max_can_add}{unit_suffix}", show_alert=True)
+            unit_suffix = "г" if product.get('unit_type', 'grams' == "grams" else "шт")
+            await callback.answer(
+                f"❌ Максимально можно добавить: {max_can_add}{unit_suffix}", 
+                show_alert=True
+            )
             if max_can_add <= 0:
                 return
         
@@ -280,28 +270,20 @@ async def handle_quantity(callback: CallbackQuery):
         temp_quantities[temp_key] = new_temp
         
         # Обновляем отображение
-        description = product.get("description", "") or ""
-        text = (
-            f"🦴 {product['name']}\n\n"
-            f"{description}\n\n"
+        text = format_product_display(product, current_in_cart)
+        
+        keyboard = product_card_keyboard(
+            product_id, 
+            category_id, 
+            new_temp, 
+            product.get("unit_type", "grams"), 
+            product.get("measurement_step", 100)
         )
         
-        # Отображение цены в зависимости от типа товара
-        if product.get('unit_type', 'grams') == 'grams':
-            price_text = f"💰 Цена: {product['price']} RSD/100г\n"
-        else:
-            price_text = f"💰 Цена: {product['price']} RSD/шт\n"
-        
-        text += price_text
-        text += f"📦 В наличии: {product['stock_grams']}{'г' if product.get('unit_type', 'grams') == 'grams' else 'шт'}\n"
-        text += f"🛒 В корзине: {current_in_cart}{'г' if product.get('unit_type', 'grams') == 'grams' else 'шт'}\n\n"
-        text += "Выберите количество:"
-
-        keyboard = product_card_keyboard(product_id, category_id, new_temp, product.get("unit_type", "grams"), product.get("measurement_step", 100))
         await callback.message.edit_text(text, reply_markup=keyboard)
         
         # Показываем информацию о предварительном количестве
-        unit_suffix = "г" if product.get('unit_type', 'grams') == 'grams' else "шт"
+        unit_suffix = "г" if product.get('unit_type', 'grams' == "grams" else "шт")
         await callback.answer(f"Предварительное количество: {new_temp}{unit_suffix}")
             
     except Exception as e:
@@ -310,7 +292,7 @@ async def handle_quantity(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("cart_add:"))
 async def add_to_cart(callback: CallbackQuery):
-    """Добавить товар в корзину (предварительное количество)"""
+    """Добавить товар в корзину"""
     try:
         parts = callback.data.split(":")
         product_id = int(parts[1])
@@ -326,9 +308,10 @@ async def add_to_cart(callback: CallbackQuery):
 
         if result["success"]:
             # Сбрасываем временное количество
-            reset_temp_quantity(callback.from_user.id, product_id)
+            temp_key = get_temp_quantity_key(callback.from_user.id, product_id)
+            temp_quantities[temp_key] = 0
 
-            # Обновляем отображение с новым количеством в корзине
+            # Обновляем отображение
             product = await catalog_service.get_product(product_id)
 
             # Получаем обновленное количество в корзине
@@ -342,28 +325,22 @@ async def add_to_cart(callback: CallbackQuery):
                 current_in_cart = cart_item.quantity if cart_item else 0
 
             # Формируем текст
-            description = product.get("description", "") or ""
-            text = (
-                f"🦴 {product['name']}\n\n"
-                f"{description}\n\n"
+            unit_suffix = "г" if product.get('unit_type', 'grams' == "grams" else "шт")
+            text = format_product_display(product, current_in_cart)
+            text += f"\n✅ Товар добавлен в корзину!"
+
+            # Обновляем сообщение
+            keyboard = product_card_keyboard(
+                product_id, 
+                category_id, 
+                0, 
+                product.get("unit_type", "grams"), 
+                product.get("measurement_step", 100)
             )
             
-            # Отображение цены в зависимости от типа товара
-            if product.get('unit_type', 'grams') == 'grams':
-                price_text = f"💰 Цена: {product['price']} RSD/100г\n"
-            else:
-                price_text = f"💰 Цена: {product['price']} RSD/шт\n"
-            
-            text += price_text
-            text += f"📦 В наличии: {product['stock_grams']}{'г' if product.get('unit_type', 'grams') == 'grams' else 'шт'}\n"
-            text += f"✅ В корзине: {current_in_cart}{'г' if product.get('unit_type', 'grams') == 'grams' else 'шт'}\n\n"
-            text += f"Товар добавлен в корзину!"
-
-            # Обновляем сообщение с сброшенным счетчиком
-            keyboard = product_card_keyboard(product_id, category_id, 0, product.get("unit_type", "grams"), product.get("measurement_step", 100))
             await callback.message.edit_text(text, reply_markup=keyboard)
             
-            unit_suffix = "г" if product.get("unit_type", "grams") == "grams" else "шт"
+            # Уведомление
             await callback.answer(f"✅ Добавлено в корзину: {quantity}{unit_suffix}")
         else:
             await callback.answer(result["error"], show_alert=True)
@@ -387,11 +364,15 @@ async def show_cart(callback: CallbackQuery):
             )
             return
         
-        # Формируем текст с списком товаров
-        items_text = "\n".join([
-            f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
-            for item in cart_data["items"]
-        ])
+        # Формируем текст со списком товаров
+        items_text_lines = []
+        for item in cart_data["items"]:
+            unit_suffix = "г" if item.get('unit_type', 'grams' == "grams" else "шт")
+            items_text_lines.append(
+                f"• {item['product_name']}: {item['quantity']}{unit_suffix} - {item['total_price']:.0f} RSD"
+            )
+        
+        items_text = "\n".join(items_text_lines)
         
         cart_text = (
             f"🛒 Ваша корзина\n\n"
@@ -417,15 +398,20 @@ async def clear_cart(callback: CallbackQuery):
         result = await cart_service.clear_cart(user.id)
         
         if result["success"]:
-            # Также очищаем все временные количества пользователя
+            # Очищаем все временные количества пользователя
             user_prefix = f"{callback.from_user.id}_"
-            keys_to_remove = [k for k in temp_quantities.keys() if k.startswith(user_prefix)]
+            keys_to_remove = [
+                k for k in temp_quantities.keys() 
+                if k.startswith(user_prefix)
+            ]
+            
             for key in keys_to_remove:
                 del temp_quantities[key]
             
             await callback.message.edit_text(
                 f"✅ {result['message']}\n\nКорзина пуста."
             )
+        
         await callback.answer(result["message"])
         
     except Exception as e:
@@ -455,10 +441,15 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
         # Переходим к заполнению данных
         await state.set_state(OrderForm.waiting_pet_name)
         
-        items_text = "\n".join([
-            f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
-            for item in cart_data["items"]
-        ])
+        # Формируем список товаров для отображения
+        items_text_lines = []
+        for item in cart_data["items"]:
+            unit_suffix = "г" if item.get('unit_type', 'grams' == "grams" else "шт")
+            items_text_lines.append(
+                f"• {item['product_name']}: {item['quantity']}{unit_suffix} - {item['total_price']:.0f} RSD"
+            )
+        
+        items_text = "\n".join(items_text_lines)
         
         order_text = (
             "🛎️ Оформление заказа\n\n"
@@ -480,12 +471,6 @@ async def process_pet_name(message: Message, state: FSMContext):
     pet_name = message.text.strip()
     
     if len(pet_name) < 2:
-                # Удаляем предыдущее сообщение о запросе имени
-        try:
-            await message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-
         await message.answer("❌ Слишком короткое имя. Введите имя питомца:")
         return
     
@@ -504,12 +489,6 @@ async def process_telegram_login(message: Message, state: FSMContext):
     telegram_login = message.text.strip().replace("@", "")
     
     if len(telegram_login) < 3:
-                # Удаляем предыдущее сообщение о запросе логина
-        try:
-            await message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-
         await message.answer("❌ Слишком короткий login. Введите Telegram login:")
         return
     
@@ -529,22 +508,20 @@ async def process_address(message: Message, state: FSMContext):
     address = message.text.strip()
     
     if len(address) < 10:
-                # Удаляем предыдущее сообщение о запросе адреса
-        try:
-            await message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-
         await message.answer("❌ Адрес слишком короткий. Введите полный адрес:")
         return
     
     data = await state.get_data()
     
     # Формируем подтверждение
-    items_text = "\n".join([
-        f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
-        for item in data["cart_items"]
-    ])
+    items_text_lines = []
+    for item in data["cart_items"]:
+        unit_suffix = "г" if item.get('unit_type', 'grams' == "grams" else "шт")
+        items_text_lines.append(
+            f"• {item['product_name']}: {item['quantity']}{unit_suffix} - {item['total_price']:.0f} RSD"
+        )
+    
+    items_text = "\n".join(items_text_lines)
     
     confirmation_text = (
         "✅ Подтверждение заказа\n\n"
@@ -571,10 +548,11 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
         data = await state.get_data()
         
         async with get_session() as session:
-            # Создаем заказ
+            # Импортируем здесь чтобы избежать циклических импортов
             from database import Order, OrderItem
             import datetime
             
+            # Создаем заказ
             order = Order(
                 user_id=data["user_id"],
                 customer_name=data["pet_name"],
@@ -607,7 +585,11 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
             
             # Очищаем временные количества пользователя
             user_prefix = f"{data['user_id']}_"
-            keys_to_remove = [k for k in temp_quantities.keys() if k.startswith(user_prefix)]
+            keys_to_remove = [
+                k for k in temp_quantities.keys() 
+                if k.startswith(user_prefix)
+            ]
+            
             for key in keys_to_remove:
                 del temp_quantities[key]
             
@@ -698,9 +680,8 @@ async def handle_help(callback: CallbackQuery):
 @router.callback_query()
 async def handle_unknown_callback(callback: CallbackQuery):
     """Обработка неизвестных callback-запросов"""
-    # Игнорируем админские колбэки (они обрабатываются в админском роутере)
+    # Игнорируем админские колбэки
     if callback.data.startswith("admin_"):
-        # Пропускаем админские колбэки
         return
     
     logger.warning(f"Неизвестный колбэк: {callback.data}")

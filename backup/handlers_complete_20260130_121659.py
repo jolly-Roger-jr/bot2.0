@@ -297,7 +297,7 @@ async def handle_quantity(callback: CallbackQuery):
         text += f"🛒 В корзине: {current_in_cart}{'г' if product.get('unit_type', 'grams') == 'grams' else 'шт'}\n\n"
         text += "Выберите количество:"
 
-        keyboard = product_card_keyboard(product_id, category_id, new_temp, product.get("unit_type", "grams"), product.get("measurement_step", 100))
+        keyboard = product_card_keyboard(product_id, category_id, temp_qty, product.get("unit_type", "grams"), product.get("measurement_step", 100))
         await callback.message.edit_text(text, reply_markup=keyboard)
         
         # Показываем информацию о предварительном количестве
@@ -480,12 +480,6 @@ async def process_pet_name(message: Message, state: FSMContext):
     pet_name = message.text.strip()
     
     if len(pet_name) < 2:
-                # Удаляем предыдущее сообщение о запросе имени
-        try:
-            await message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-
         await message.answer("❌ Слишком короткое имя. Введите имя питомца:")
         return
     
@@ -504,12 +498,6 @@ async def process_telegram_login(message: Message, state: FSMContext):
     telegram_login = message.text.strip().replace("@", "")
     
     if len(telegram_login) < 3:
-                # Удаляем предыдущее сообщение о запросе логина
-        try:
-            await message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-
         await message.answer("❌ Слишком короткий login. Введите Telegram login:")
         return
     
@@ -529,12 +517,6 @@ async def process_address(message: Message, state: FSMContext):
     address = message.text.strip()
     
     if len(address) < 10:
-                # Удаляем предыдущее сообщение о запросе адреса
-        try:
-            await message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-
         await message.answer("❌ Адрес слишком короткий. Введите полный адрес:")
         return
     

@@ -40,7 +40,7 @@ def format_admin_notification(order_data: dict, order_id: int) -> str:
     # Формируем список товаров
     items_text = ""
     for item in order_data.get("cart_items", []):
-        items_text += f"• {item['product_name']}: {item['quantity_grams']}г - {item['total_price']:.0f} RSD\n"
+        items_text += f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD\n"
     
     notification = (
         f"🛎️ <b>НОВЫЙ ЗАКАЗ #{order_id}</b>\n\n"

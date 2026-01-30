@@ -29,6 +29,9 @@ async def main():
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     
+    # Устанавливаем настройки бота для удаления клавиатур
+    await bot.set_my_commands([])
+    
     # ВАЖНО: Админский роутер должен быть ПЕРВЫМ,
     # чтобы он перехватывал админские колбэки
     dp.include_router(admin_router)

@@ -54,8 +54,16 @@ class CartService:
                 if not product or not product.available:
                     return {"success": False, "error": "Товар недоступен"}
                 
-                if quantity > product.stock_grams:
-                    return {"success": False, "error": f"Недостаточно товара. Доступно: {product.stock_grams}г"}
+                # Проверка наличия с учетом типа товара
+                if product.unit_type == 'grams':
+                    stock = product.stock_grams
+                    unit_text = 'г'
+                else:  # pieces
+                    stock = product.stock_grams  # для штучных товаров stock_grams хранит штуки
+                    unit_text = 'шт'
+                
+                if quantity > stock:
+                    return {"success": False, "error": f"Недостаточно товара. Доступно: {stock}{unit_text}"}
                 
                 # Находим существующий элемент корзины
                 stmt = select(CartItem).where(
@@ -109,7 +117,7 @@ class CartService:
                     if product and new_quantity > product.stock_grams:
                         return {
                             "success": False,
-                            "error": f"Максимально доступно: {product.stock_grams}г",
+                            "error": f"Максимально доступно: {product.stock_grams}{"г" if product.unit_type == "grams" else "шт"}",
                             "max_quantity": product.stock_grams
                         }
                     
@@ -142,13 +150,18 @@ class CartService:
             total_price = 0.0
             
             for cart_item, product in items:
-                item_price = (product.price / 100) * cart_item.quantity
+                # Расчет цены в зависимости от типа товара
+                if product.unit_type == 'grams':
+                    item_price = (product.price / 100) * cart_item.quantity
+                else:  # pieces
+                    item_price = product.price * cart_item.quantity
                 total_price += item_price
                 
                 cart_items.append({
                     "product_id": product.id,
                     "product_name": product.name,
-                    "quantity_grams": cart_item.quantity,
+                    "quantity": cart_item.quantity,
+                    "unit_type": product.unit_type,
                     "total_price": item_price,
                     "price_per_100g": product.price
                 })
@@ -210,7 +223,10 @@ class CatalogService:
                     "price": p.price,
                     "stock_grams": p.stock_grams,
                     "image_url": p.image_url,
-                    "available": p.available
+                    "available": p.available,
+                    "is_active": p.is_active,
+                    "unit_type": p.unit_type,
+                    "measurement_step": p.measurement_step
                 }
                 for p in products
             ]
@@ -228,9 +244,27 @@ class CatalogService:
                     "stock_grams": product.stock_grams,
                     "image_url": product.image_url,
                     "available": product.available,
+                    "is_active": product.is_active,
+                    "unit_type": product.unit_type,
+                    "measurement_step": product.measurement_step,
                     "category_id": product.category_id
                 }
             return None
+    
+    async def update_product(self, product_id: int, **kwargs) -> Dict:
+        """Обновить товар"""
+        async with get_session() as session:
+            product = await session.get(Product, product_id)
+            if not product:
+                return {"success": False, "error": "Товар не найден"}
+            
+            # Обновляем только переданные поля
+            for key, value in kwargs.items():
+                if hasattr(product, key):
+                    setattr(product, key, value)
+            
+            await session.commit()
+            return {"success": True, "product": product}
 
 
 class UserService:
@@ -251,7 +285,7 @@ class UserService:
                 {
                     "id": addr.id,
                     "address": addr.address,
-                    "is_default": addr.is_default,
+                    "is_active": addr.is_default,
                     "created_at": addr.created_at
                 }
                 for addr in addresses

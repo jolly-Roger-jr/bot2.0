@@ -72,7 +72,8 @@ def product_card_keyboard(product_id: int, category_id: int, current_qty: int = 
     
     # Количество в единицах измерения
     if unit_type == 'grams':
-        qty_units = current_qty // measurement_step
+        # Для грамм показываем точное количество, а не количество шагов
+        qty_units = current_qty
         unit_text = f'{measurement_step}г'
         unit_symbol = 'г'
     else:  # pieces
@@ -89,7 +90,7 @@ def product_card_keyboard(product_id: int, category_id: int, current_qty: int = 
         ),
         InlineKeyboardButton(
             text=f"{qty_units} {unit_symbol}",
-            callback_data=f"qty_info:{product_id}:{current_qty}"
+            callback_data=f"qty_info:{product_id}"
         ),
         InlineKeyboardButton(
             text="➕",
@@ -98,7 +99,7 @@ def product_card_keyboard(product_id: int, category_id: int, current_qty: int = 
     )
     
     # Ряд 2: Добавить в корзину
-    add_qty = qty_units * measurement_step
+    add_qty = qty_units
     if add_qty > 0:
         builder.row(
             InlineKeyboardButton(

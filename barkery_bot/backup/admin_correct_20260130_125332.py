@@ -449,7 +449,7 @@ async def process_product_unit_type(message: Message, state: FSMContext):
 async def process_product_image(message: Message, state: FSMContext):
     """Обработка изображения товара"""
     image_url = None
-
+    
     if message.text and message.text.strip().lower() in ['пропустить', 'skip', 'без изображения']:
         await message.answer("✅ Пропускаем загрузку изображения")
     elif message.photo:
@@ -459,49 +459,27 @@ async def process_product_image(message: Message, state: FSMContext):
     else:
         await message.answer("❌ Пожалуйста, загрузите изображение или отправьте 'пропустить'")
         return
-
+    
     await state.update_data(image_url=image_url)
-
+    
     # Получаем список категорий из состояния
     data = await state.get_data()
     categories = data.get('available_categories', [])
-
+    
     if not categories:
-        # Если категории утеряны, получаем их заново из БД
-        from database import get_session, Category
-        from sqlalchemy import select
-        
-        async with get_session() as session:
-            stmt = select(Category).order_by(Category.name)
-            result = await session.execute(stmt)
-            categories = result.scalars().all()
-            
-            if categories:
-                # Сохраняем в состоянии
-                await state.update_data(available_categories=categories)
-                categories_text = "\n".join([f"{cat.id}. {cat.name}" for cat in categories])
-                
-                await state.set_state(AdminStates.waiting_product_category)
-                await message.answer(
-                    f"✅ Изображение обработано\n\n"
-                    f"Доступные категории:\n{categories_text}\n\n"
-                    "Шаг 6 из 6: Введите ID категории для товара:"
-                )
-                return
-            else:
-                await message.answer("❌ В базе данных нет категорий. Сначала создайте категории.")
-                await state.clear()
-                return
-
-    # Если категории есть, продолжаем как обычно
+        await message.answer("❌ Список категорий устарел. Начните заново.")
+        await state.clear()
+        return
+    
     categories_text = "\n".join([f"{cat.id}. {cat.name}" for cat in categories])
     await state.set_state(AdminStates.waiting_product_category)
-
+    
     await message.answer(
         f"✅ Изображение обработано\n\n"
         f"Доступные категории:\n{categories_text}\n\n"
         "Шаг 6 из 6: Введите ID категории для товара:"
     )
+
 @admin_router.message(AdminStates.waiting_product_category)
 async def process_product_category(message: Message, state: FSMContext):
     """Обработка категории товара"""
@@ -523,20 +501,8 @@ async def process_product_category(message: Message, state: FSMContext):
             await message.answer(f"❌ Категория с ID {category_id} не найдена. Введите ID из списка:")
             return
         
-                # Создаем товар
+        # Создаем товар
         async with get_session() as session:
-            # Проверяем наличие всех необходимых данных
-            required_fields = ['product_name', 'price', 'stock', 'unit_type', 'measurement_step', 'category_id']
-            missing = []
-            for field in required_fields:
-                if field not in data:
-                    missing.append(field)
-            
-            if missing:
-                await message.answer(f"❌ Ошибка: отсутствуют данные: {missing}")
-                await state.clear()
-                return
-            
             product = Product(
                 name=data['product_name'],
                 description=data.get('description', ''),
@@ -575,10 +541,7 @@ async def process_product_category(message: Message, state: FSMContext):
         await message.answer("❌ Введите число (ID категории):")
     except Exception as e:
         logger.error(f"Ошибка создания товара: {e}")
-        logger.error(f"Данные в состоянии: {data}")
-        import traceback
-        logger.error(f"Трассировка: {traceback.format_exc()}")
-        await message.answer(f"❌ Ошибка при создании товара: {str(e)}")
+        await message.answer("❌ Ошибка при создании товара")
         await state.clear()
 
 @admin_router.callback_query(F.data.startswith("admin_toggle_product:"))
