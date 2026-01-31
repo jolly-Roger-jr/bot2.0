@@ -766,7 +766,7 @@ async def process_address_change(message: Message, state: FSMContext):
     else:
         # Пользователь ввел новый адрес напрямую
         address = message.text.strip()
-        if len(address) < 10:
+        if len(address) < 6:
             await message.answer("❌ Адрес слишком короткий. Введите полный адрес:")
             return
         
@@ -780,7 +780,7 @@ async def process_address(message: Message, state: FSMContext):
     """Обработка адреса доставки"""
     address = message.text.strip()
     
-    if len(address) < 10:
+    if len(address) < 6:
         await message.answer("❌ Адрес слишком короткий. Введите полный адрес:")
         return
     
@@ -807,7 +807,7 @@ async def check_telegram_login(message: Message, state: FSMContext):
         # Запрашиваем telegram login
         await state.set_state(OrderForm.waiting_telegram_login)
         await message.answer(
-            "📱Введите ваш Telegram login (без @):\n"
+            "📱 Введите ваш Telegram login (без @):\n"
             "Например: ivanov_ivan"
         )
 
@@ -956,7 +956,6 @@ async def show_profile(callback: CallbackQuery):
         if not user_info:
             profile_text = (
                 f"👤 Ваш профиль\n\n"
-                f"🆔 ID: {user.id}\n"
                 f"📅 Зарегистрирован: {user.created_at.strftime('%d.%m.%Y')}\n\n"
                 "Данные будут заполнены после первого заказа."
             )
@@ -965,7 +964,13 @@ async def show_profile(callback: CallbackQuery):
                 f"👤 Ваш профиль\n\n"
                 f"🐕 Питомец: {user_info.get('pet_name', 'Не указано')}\n"
                 f"📱 Telegram: @{user_info.get('telegram_username', 'Не указан')}\n"
+                f"📞 Телефон: {user_info.get('phone', 'Не указан')}\n"
+                f"🐶 Порода: {user_info.get('dog_breed', 'Не указана')}\n"
+                f"⚠️ Аллергии: {user_info.get('allergies', 'Не указаны')}\n"
+                f"📝 Примечания: {user_info.get('notes', 'Нет')}\n"
                 f"📍 Адрес: {user_info.get('address', 'Не указан')}\n"
+                f"🆔 ID: {user.id}\n"
+                f"📅 Зарегистрирован: {user.created_at.strftime('%d.%m.%Y')}\n"
             )
         
         await safe_edit_message(
@@ -993,7 +998,7 @@ async def handle_help(callback: CallbackQuery):
         "2. Добавьте их в корзину\n"
         "3. Перейдите в корзину\n"
         "4. Оформите заказ\n\n"
-        "💬 Поддержка: @barkery_rs"
+        "💬 Поддержка: @support"
     )
     
     from keyboards import help_keyboard

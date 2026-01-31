@@ -1,4 +1,3 @@
-from sqlalchemy.sql import func
 """
 Бизнес-логика: корзина, заказы, каталог - с исправленными блокировками
 """
@@ -25,7 +24,7 @@ class CartService:
         return f"user:{user_id}"
     
     async def get_or_create_user(self, telegram_id: int, username: str = "", full_name: str = "") -> User:
-        """Получить или создать пользователя - ОБНОВЛЕННАЯ ВЕРСИЯ"""
+        """Получить или создать пользователя"""
         async with get_session() as session:
             stmt = select(User).where(User.telegram_id == str(telegram_id))
             result = await session.execute(stmt)
@@ -34,16 +33,12 @@ class CartService:
             if not user:
                 user = User(
                     telegram_id=str(telegram_id),
-                    telegram_username=username,  # Используем новое поле
+                    username=username,
                     full_name=full_name
                 )
                 session.add(user)
                 await session.commit()
                 await session.refresh(user)
-            else:
-                # Обновляем активность пользователя
-                user.last_active = func.now() if hasattr(func, 'now') else None
-                await session.commit()
             
             return user
     
@@ -273,43 +268,7 @@ class CatalogService:
 
 
 class UserService:
-    """Сервис для работы с пользователями и адресами - ОБНОВЛЕН"""
-    
-    async def get_user_info(self, user_id: int) -> Optional[Dict]:
-        """Получить информацию о пользователе"""
-        async with get_session() as session:
-            user = await session.get(User, user_id)
-            if user:
-                return {
-                    "id": user.id,
-                    "telegram_id": user.telegram_id,
-                    "telegram_username": user.telegram_username,
-                    "full_name": user.full_name,
-                    "pet_name": user.pet_name,
-                    "phone": user.phone,
-                    "instagram": user.instagram,
-                    "dog_breed": user.dog_breed,
-                    "allergies": user.allergies,
-                    "notes": user.notes,
-                    "address": user.address,  # Старый адрес для совместимости
-                    "last_order_date": user.last_order_date
-                }
-            return None
-    
-    async def update_user_info(self, user_id: int, **kwargs) -> Dict:
-        """Обновить информацию о пользователе"""
-        async with get_session() as session:
-            user = await session.get(User, user_id)
-            if not user:
-                return {"success": False, "error": "Пользователь не найден"}
-            
-            # Обновляем только переданные поля
-            for key, value in kwargs.items():
-                if hasattr(user, key) and value is not None:
-                    setattr(user, key, value)
-            
-            await session.commit()
-            return {"success": True, "user": user}
+    """Сервис для работы с пользователями и адресами"""
     
     async def get_user_addresses(self, user_id: int) -> List[Dict]:
         """Получить адреса пользователя"""
@@ -326,7 +285,7 @@ class UserService:
                 {
                     "id": addr.id,
                     "address": addr.address,
-                    "is_default": addr.is_default,
+                    "is_active": addr.is_default,
                     "created_at": addr.created_at
                 }
                 for addr in addresses
@@ -368,6 +327,21 @@ class UserService:
                     "is_default": new_address.is_default
                 }
             }
+    
+    async def update_user_info(self, user_id: int, pet_name: str = None, telegram_login: str = None) -> Dict:
+        """Обновить информацию о пользователе"""
+        async with get_session() as session:
+            user = await session.get(User, user_id)
+            if not user:
+                return {"success": False, "error": "Пользователь не найден"}
+            
+            if pet_name:
+                user.full_name = pet_name
+            if telegram_login:
+                user.username = telegram_login
+            
+            await session.commit()
+            return {"success": True, "user": user}
 
 
 # Создаем экземпляры сервисов

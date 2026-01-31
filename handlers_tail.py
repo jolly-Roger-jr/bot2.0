@@ -1,15 +1,17 @@
-"""
-Barkery Bot - handlers.py
-ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ с обработкой изображений
-Восстановлена: 2026-01-30
-"""
-import logging
-import asyncio
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
+python3 migrate_data.py
+
+echo -e "\n=== ОБНОВЛЯЕМ services.py ==="
+mv services_new.py services.py
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeОeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeОeee нeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeОlceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeОeefuneeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeОeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeemy.sql import func\n/' services.py
+    echo "Импорт добавлен"
+fi
+
+echo -e "\n=== АНАЛИЗИРУЕМ ПРОЦЕСС ЗАКАЗА ДЛЯ МОДИФИКАЦИИ ==="
+echo "Текущие шаги заказа:"
+grep -n "waiting_pet_name\|waiting_telegram_login\|waiting_address" handlers.py
+
+echo -e "\n=== СОЗДАЕМ НОВУЮ ВЕРСИЮ handlers.py (процесс заказа) ==="
+# СначалtatesGroup
 from aiogram.exceptions import TelegramBadRequest
 
 from keyboards import (
@@ -620,105 +622,66 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
             for item in cart_data["items"]
         ])
         
-        # Проверяем есть ли у пользователя уже pet_name
-        has_pet_name = user_info and user_info.get('pet_name')
+        # Шаг 1: Имя питомца (всегда спрашиваем)
+        await state.set_state(OrderForm.waiting_pet_name)
         
-        if has_pet_name:
-            # У пользователя уже есть имя питомца, переходим сразу к адресу
-            pet_name = user_info['pet_name']
-            await state.update_data(pet_name=pet_name)
-            
-            # Переходим к шагу адреса
-            await check_address_step(callback, state, pet_name, user_info)
-        else:
-            # Шаг 1: Имя питомца (если нет в БД)
-            await state.set_state(OrderForm.waiting_pet_name)
-            
+        # Если у пользователя уже есть имя питомца, показываем его
+        current_pet_name = user_info.get('pet_name') if user_info else None
+        if current_pet_name:
             order_text = (
                 "🛎️ Оформление заказа\n\n"
                 f"Ваш заказ:\n{items_text}\n\n"
                 f"Итого: {cart_data['total_price']:.0f} RSD\n\n"
-                "🐕 Введите имя питомца:"
+                f"Текущее имя питомца: {current_pet_name}\n\n"
+                "🐕 Шаг 1 из 3: Введите имя питомца (или отправьте '+' чтобы оставить текущее):"
             )
-            
-            await safe_edit_message(callback, order_text)
+        else:
+            order_text = (
+                "🛎️ Оформление заказа\n\n"
+                f"Ваш заказ:\n{items_text}\n\n"
+                f"Итого: {cart_data['total_price']:.0f} RSD\n\n"
+                "🐕 Шаг 1 из 3: Введите имя питомца:"
+            )
+        
+        await safe_edit_message(callback, order_text)
         
     except Exception as e:
         logger.error(f"Ошибка начала заказа: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
 
-async def check_address_step(callback: CallbackQuery, state: FSMContext, pet_name: str, user_info: dict):
-    """Переход к шагу адреса доставки"""
-    # Проверяем есть ли у пользователя старый адрес
-    old_address = user_info.get('address') if user_info else None
-    
-    if old_address:
-        address_text = (
-            f"✅ Имя питомца: {pet_name}\n\n"
-            f"📍 Адрес доставки\n\n"
-            f"Предыдущий адрес:\n{old_address}\n\n"
-            "Использовать этот адрес? (да/нет)\n"
-            "Или введите новый адрес доставки:"
-        )
-        await state.set_state(OrderForm.waiting_address_change)
-    else:
-        address_text = (
-            f"✅ Имя питомца: {pet_name}\n\n"
-            "📍 Введите адрес доставки:\n"
-            "Улица, дом, квартира, город\n\n"
-            "Пример: ул. Кнез Михаилова 15, кв. 23, Белград"
-        )
-        await state.set_state(OrderForm.waiting_address)
-    
-    await callback.bot.send_message(
-        chat_id=callback.from_user.id,
-        text=address_text
-    )
-
 @router.message(OrderForm.waiting_pet_name)
 async def process_pet_name(message: Message, state: FSMContext):
-    """Обработка имени питомца - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    """Обработка имени питомца"""
     pet_name = message.text.strip()
     data = await state.get_data()
     user_info = data.get('user_info', {})
     
-    # Если у пользователя уже есть pet_name в БД, используем его
-    existing_pet_name = user_info.get('pet_name')
-    
-    if existing_pet_name and existing_pet_name.strip():
-        # У пользователя уже есть имя питомца в БД
-        # Проверяем не хочет ли он его изменить
-        if pet_name == '+':
-            # Оставляем текущее имя
-            pet_name = existing_pet_name
-            logger.info(f"Используем существующее имя питомца: {pet_name}")
-        elif len(pet_name) >= 2:
-            # Пользователь ввел новое имя
-            logger.info(f"Изменяем имя питомца: {existing_pet_name} → {pet_name}")
-        else:
-            # Слишком короткое имя, запрашиваем снова
-            await message.answer("❌ Слишком короткое имя. Введите имя питомца:")
-            return
+    # Проверяем, хочет ли пользователь оставить текущее имя
+    if pet_name == '+' and user_info.get('pet_name'):
+        pet_name = user_info['pet_name']
     else:
-        # У пользователя нет имени питомца в БД
         if len(pet_name) < 2:
-            await message.answer("❌ Слишком короткое имя. Введите имя питомца (минимум 2 символа):")
+            # Удаляем предыдущее сообщение о запросе имени
+            try:
+                await message.delete()
+            except:
+                pass  # Игнорируем ошибки удаления
+
+            await message.answer("❌ Слишком короткое имя. Введите имя питомца:")
             return
     
     await state.update_data(pet_name=pet_name)
     
-    # Переходим к проверке адреса
-    await check_address_message(message, state, pet_name, user_info)
-
-async def check_address_message(message: Message, state: FSMContext, pet_name: str, user_info: dict):
-    """Отправляем сообщение с проверкой адреса"""
+    # Шаг 2: Адрес доставки
+    await state.set_state(OrderForm.waiting_address)
+    
     # Проверяем есть ли у пользователя старый адрес
     old_address = user_info.get('address') if user_info else None
     
     if old_address:
         address_text = (
             f"✅ Имя питомца принято: {pet_name}\n\n"
-            f"📍 Адрес доставки\n\n"
+            f"📍 Шаг 2 из 3: Адрес доставки\n\n"
             f"Предыдущий адрес:\n{old_address}\n\n"
             "Использовать этот адрес? (да/нет)\n"
             "Или введите новый адрес доставки:"
@@ -727,7 +690,7 @@ async def check_address_message(message: Message, state: FSMContext, pet_name: s
     else:
         address_text = (
             f"✅ Имя питомца принято: {pet_name}\n\n"
-            "📍 Введите адрес доставки:\n"
+            "📍 Шаг 2 из 3: Введите адрес доставки:\n"
             "Улица, дом, квартира, город\n\n"
             "Пример: ул. Кнез Михаилова 15, кв. 23, Белград"
         )
@@ -781,6 +744,12 @@ async def process_address(message: Message, state: FSMContext):
     address = message.text.strip()
     
     if len(address) < 10:
+        # Удаляем предыдущее сообщение о запросе адреса
+        try:
+            await message.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+
         await message.answer("❌ Адрес слишком короткий. Введите полный адрес:")
         return
     
@@ -807,7 +776,7 @@ async def check_telegram_login(message: Message, state: FSMContext):
         # Запрашиваем telegram login
         await state.set_state(OrderForm.waiting_telegram_login)
         await message.answer(
-            "📱Введите ваш Telegram login (без @):\n"
+            "📱 Шаг 3 из 3: Введите ваш Telegram login (без @):\n"
             "Например: ivanov_ivan"
         )
 
@@ -817,6 +786,12 @@ async def process_telegram_login(message: Message, state: FSMContext):
     telegram_login = message.text.strip().replace("@", "")
     
     if len(telegram_login) < 3:
+        # Удаляем предыдущее сообщение о запросе логина
+        try:
+            await message.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+
         await message.answer("❌ Слишком короткий login. Введите Telegram login:")
         return
     
@@ -965,7 +940,13 @@ async def show_profile(callback: CallbackQuery):
                 f"👤 Ваш профиль\n\n"
                 f"🐕 Питомец: {user_info.get('pet_name', 'Не указано')}\n"
                 f"📱 Telegram: @{user_info.get('telegram_username', 'Не указан')}\n"
+                f"📞 Телефон: {user_info.get('phone', 'Не указан')}\n"
+                f"🐶 Порода: {user_info.get('dog_breed', 'Не указана')}\n"
+                f"⚠️ Аллергии: {user_info.get('allergies', 'Не указаны')}\n"
+                f"📝 Примечания: {user_info.get('notes', 'Нет')}\n"
                 f"📍 Адрес: {user_info.get('address', 'Не указан')}\n"
+                f"🆔 ID: {user.id}\n"
+                f"📅 Зарегистрирован: {user.created_at.strftime('%d.%m.%Y')}\n"
             )
         
         await safe_edit_message(
@@ -993,7 +974,7 @@ async def handle_help(callback: CallbackQuery):
         "2. Добавьте их в корзину\n"
         "3. Перейдите в корзину\n"
         "4. Оформите заказ\n\n"
-        "💬 Поддержка: @barkery_rs"
+        "💬 Поддержка: @support"
     )
     
     from keyboards import help_keyboard

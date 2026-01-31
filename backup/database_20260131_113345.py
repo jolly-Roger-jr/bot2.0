@@ -20,35 +20,17 @@ Base = declarative_base()
 # ========== МОДЕЛИ ==========
 
 class User(Base):
-    """Модель пользователя - ОБНОВЛЕНА"""
+    """Модель пользователя"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
     telegram_id = Column(String, unique=True, nullable=False, index=True)
-    
-    # Основная информация из заказа
-    pet_name = Column(String, nullable=True)  # Имя питомца
-    telegram_username = Column(String, nullable=True)  # Telegram логин (без @)
-    
-    # Контактная информация
+    username = Column(String, nullable=True)
+    full_name = Column(String, nullable=True)
     phone = Column(String, nullable=True)
-    
-    # Дополнительная информация о собаке
-    instagram = Column(String, nullable=True)
-    dog_breed = Column(String, nullable=True)  # Порода собаки
-    allergies = Column(String, nullable=True)  # Наличие аллергии
-    notes = Column(Text, nullable=True)  # Примечания
-    
-    # Системные поля
-    full_name = Column(String, nullable=True)  # Полное имя пользователя (из Telegram)
+    address = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_active = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    last_order_date = Column(DateTime(timezone=True), nullable=True)
-    
-    # Резервные поля для миграции
-    address = Column(Text, nullable=True)  # Старый адрес (для обратной совместимости)
-    telegram_login_backup = Column(String, nullable=True)
-    allergy_backup = Column(String, nullable=True)
 
 
 class Category(Base):
@@ -124,19 +106,6 @@ class OrderItem(Base):
     quantity = Column(Integer, nullable=False)  # количество в граммах
 
 
-class UserAddress(Base):
-    """Модель адресов доставки пользователя"""
-    __tablename__ = "user_addresses"
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    address = Column(Text, nullable=False)
-    is_default = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    user = relationship("User")
-
-
 # ========== СЕССИИ И ENGINE ==========
 
 engine = create_async_engine(
@@ -167,12 +136,18 @@ async def get_session() -> AsyncSession:
 
 
 async def init_db():
-    """Инициализация БД (создание таблиц) - миграция"""
+    """Инициализация БД (создание таблиц)"""
     async with engine.begin() as conn:
-        # Создаем таблицы (SQLAlchemy автоматически обновит структуру)
         await conn.run_sync(Base.metadata.create_all)
-        
-        # Для SQLite миграция будет выполнена автоматически,
-        # так как мы используем ту же таблицу с новыми полями
-        print("✅ База данных инициализирована (миграция выполнена)")
 
+class UserAddress(Base):
+    """Модель адресов доставки пользователя"""
+    __tablename__ = "user_addresses"
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    address = Column(Text, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    user = relationship("User")
