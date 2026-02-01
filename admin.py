@@ -889,3 +889,11 @@ async def admin_back(callback: CallbackQuery):
         "Выберите действие:",
         reply_markup=admin_main_keyboard()
     )
+
+# Импортируем новый обработчик
+try:
+    from admin_edit_handler import edit_router as admin_edit_router
+    # Включаем новый роутер в основной админский роутер
+    admin_router.include_router(admin_edit_router)
+except ImportError:
+    logger.warning("Модуль admin_edit_handler не найден. Новый функционал редактирования недоступен.")

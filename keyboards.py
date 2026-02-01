@@ -227,15 +227,23 @@ def admin_product_management_keyboard(products: list, category_id: int) -> Inlin
     
     for product in products:
         status = "✅" if product["available"] else "⛔"
-        stock_status = f"{product['stock_grams']}г"
         
+        # Определяем отображение остатков в зависимости от типа товара
+        unit_type = product.get('unit_type', 'grams')
+        if unit_type == 'grams':
+            stock_status = f"{product['stock_grams']}г"
+        else:  # pieces
+            stock_status = f"{product['stock_grams']}шт"
+        
+        # РЯД 1: Кликабельное название товара (новый функционал)
         builder.row(
             InlineKeyboardButton(
                 text=f"{status} {product['name']} - {product['price']}RSD ({stock_status})",
-                callback_data="no_action"
+                callback_data=f"admin_edit_product_full:{product['id']}:{category_id}"
             )
         )
         
+        # РЯД 2: Быстрые действия
         builder.row(
             InlineKeyboardButton(
                 text="🔄 Вкл/Выкл",
@@ -251,6 +259,7 @@ def admin_product_management_keyboard(products: list, category_id: int) -> Inlin
             )
         )
         
+        # РЯД 3: Дополнительные действия
         builder.row(
             InlineKeyboardButton(
                 text="✏️ Название",
@@ -266,6 +275,7 @@ def admin_product_management_keyboard(products: list, category_id: int) -> Inlin
             )
         )
     
+    # РЯД 4: Навигация
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад к категориям", callback_data="admin_products"),
         InlineKeyboardButton(text="🏠 В главное", callback_data="admin_back")
@@ -273,51 +283,6 @@ def admin_product_management_keyboard(products: list, category_id: int) -> Inlin
     
     return builder.as_markup()
 
-
-def admin_product_edit_keyboard(product_id: int, category_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура редактирования товара"""
-    builder = InlineKeyboardBuilder()
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="✏️ Изменить название",
-            callback_data=f"admin_edit_product_name:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Изменить цену",
-            callback_data=f"admin_edit_product_price:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="📦 Изменить остатки",
-            callback_data=f"admin_edit_product_stock:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="📏 Изменить единицы",
-            callback_data=f"admin_edit_product_units:{product_id}:{category_id}"
-        )
-    )
-    
-    builder.row(
-        InlineKeyboardButton(
-            text="⬅️ Назад",
-            callback_data=f"admin_category_products:{category_id}"
-        ),
-        InlineKeyboardButton(
-            text="🏠 В главное",
-            callback_data="admin_back"
-        )
-    )
-    
-    return builder.as_markup()
 
 def admin_product_edit_keyboard(product_id: int, category_id: int) -> InlineKeyboardMarkup:
     """Клавиатура редактирования товара"""
