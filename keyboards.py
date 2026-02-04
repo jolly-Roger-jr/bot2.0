@@ -266,8 +266,8 @@ def admin_product_management_keyboard(products: list, category_id: int) -> Inlin
                 callback_data=f"admin_edit_product_name:{product['id']}:{category_id}"
             ),
             InlineKeyboardButton(
-                text="📏 Единицы",
-                callback_data=f"admin_edit_product_units:{product['id']}:{category_id}"
+                text="📝 Описание",
+                callback_data=f"admin_edit_product_description:{product['id']}:{category_id}"
             ),
             InlineKeyboardButton(
                 text="❌ Удалить",
@@ -311,8 +311,8 @@ def admin_product_edit_keyboard(product_id: int, category_id: int) -> InlineKeyb
     
     builder.row(
         InlineKeyboardButton(
-            text="📏 Изменить единицы",
-            callback_data=f"admin_edit_product_units:{product_id}:{category_id}"
+            text="📝 Изменить описание",
+            callback_data=f"admin_edit_product_description:{product_id}:{category_id}"
         )
     )
     

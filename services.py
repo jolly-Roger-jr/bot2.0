@@ -1,6 +1,5 @@
-from sqlalchemy.sql import func
+from sqlalchemy import func
 """
-Бизнес-логика: корзина, заказы, каталог - с исправленными блокировками
 """
 import asyncio
 from collections import defaultdict
@@ -25,7 +24,7 @@ class CartService:
         return f"user:{user_id}"
     
     async def get_or_create_user(self, telegram_id: int, username: str = "", full_name: str = "") -> User:
-        """Получить или создать пользователя - ОБНОВЛЕННАЯ ВЕРСИЯ"""
+        """Получить или создать пользователя - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         async with get_session() as session:
             stmt = select(User).where(User.telegram_id == str(telegram_id))
             result = await session.execute(stmt)
@@ -34,16 +33,17 @@ class CartService:
             if not user:
                 user = User(
                     telegram_id=str(telegram_id),
-                    telegram_username=username,  # Используем новое поле
+                    telegram_username=username,  # ИСПРАВЛЕНО: было username, стало telegram_username
                     full_name=full_name
                 )
                 session.add(user)
                 await session.commit()
                 await session.refresh(user)
             else:
-                # Обновляем активность пользователя
-                user.last_active = func.now() if hasattr(func, 'now') else None
-                await session.commit()
+                # Обновляем username если он изменился
+                if username and user.telegram_username != username:
+                    user.telegram_username = username
+                    await session.commit()
             
             return user
     
@@ -92,7 +92,7 @@ class CartService:
                 
                 return {
                     "success": True,
-                    "message": f"{product.name} добавлен в корзину ({quantity}г)",
+                    "message": f"{product.name} добавлен в корзину ({quantity}{unit_text})",
                     "product_name": product.name,
                     "quantity": quantity
                 }
@@ -132,7 +132,7 @@ class CartService:
                     return {
                         "success": True,
                         "quantity": new_quantity,
-                        "message": f"Количество обновлено: {new_quantity}г"
+                        "message": f"Количество обновлено: {new_quantity}" + ("г" if product.unit_type == "grams" else "шт")
                     }
                 else:
                     # Если товара нет в корзине, но пытаемся добавить
@@ -214,7 +214,11 @@ class CatalogService:
         async with get_session() as session:
             stmt = select(Product).where(
                 Product.category_id == category_id,
-                Product.available == True
+                Product.available == True,
+                Product.is_active == True,
+                ((Product.hide_when_zero == False) | 
+                 ((Product.unit_type == "grams") & (Product.stock_grams >= 100)) | 
+                 ((Product.unit_type == "pieces") & (Product.stock_grams >= 1)))
             ).order_by(Product.name)
             
             result = await session.execute(stmt)
@@ -273,43 +277,26 @@ class CatalogService:
 
 
 class UserService:
-    """Сервис для работы с пользователями и адресами - ОБНОВЛЕН"""
+    """Сервис для работы с пользователями и адресами"""
     
-    async def get_user_info(self, user_id: int) -> Optional[Dict]:
+
+    async def get_user_info(self, user_id: int):
         """Получить информацию о пользователе"""
+        from database import get_session, User
         async with get_session() as session:
             user = await session.get(User, user_id)
             if user:
                 return {
                     "id": user.id,
                     "telegram_id": user.telegram_id,
-                    "telegram_username": user.telegram_username,
+                    "telegram_username": user.telegram_username,  # ИСПРАВЛЕНО
                     "full_name": user.full_name,
                     "pet_name": user.pet_name,
                     "phone": user.phone,
-                    "instagram": user.instagram,
-                    "dog_breed": user.dog_breed,
-                    "allergies": user.allergies,
-                    "notes": user.notes,
-                    "address": user.address,  # Старый адрес для совместимости
+                    "address": user.address,
                     "last_order_date": user.last_order_date
                 }
             return None
-    
-    async def update_user_info(self, user_id: int, **kwargs) -> Dict:
-        """Обновить информацию о пользователе"""
-        async with get_session() as session:
-            user = await session.get(User, user_id)
-            if not user:
-                return {"success": False, "error": "Пользователь не найден"}
-            
-            # Обновляем только переданные поля
-            for key, value in kwargs.items():
-                if hasattr(user, key) and value is not None:
-                    setattr(user, key, value)
-            
-            await session.commit()
-            return {"success": True, "user": user}
     
     async def get_user_addresses(self, user_id: int) -> List[Dict]:
         """Получить адреса пользователя"""
@@ -326,7 +313,7 @@ class UserService:
                 {
                     "id": addr.id,
                     "address": addr.address,
-                    "is_default": addr.is_default,
+                    "is_active": addr.is_default,
                     "created_at": addr.created_at
                 }
                 for addr in addresses
@@ -335,7 +322,6 @@ class UserService:
     async def add_user_address(self, user_id: int, address: str, is_default: bool = False) -> Dict:
         """Добавить адрес пользователя"""
         async with get_session() as session:
-            from database import UserAddress
             
             # Если это адрес по умолчанию, снимаем флаг с других адресов
             if is_default:
@@ -368,7 +354,86 @@ class UserService:
                     "is_default": new_address.is_default
                 }
             }
+    
+    async def update_user_info(self, user_id: int, pet_name: str = None, telegram_login: str = None) -> Dict:
+        """Обновить информацию о пользователе - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+        async with get_session() as session:
+            user = await session.get(User, user_id)
+            if not user:
+                return {"success": False, "error": "Пользователь не найден"}
+            
+            if pet_name:
+                user.pet_name = pet_name  # ИСПРАВЛЕНО: было full_name, стало pet_name
+            
+            if telegram_login:
+                user.telegram_username = telegram_login  # ИСПРАВЛЕНО: было username, стало telegram_username
+            
+            await session.commit()
+            return {"success": True, "user": user}
 
+
+
+# ========== ФУНКЦИИ ДЛЯ АВТОМАТИЧЕСКОГО УЧЕТА ОСТАТКОВ ==========
+
+async def update_product_stock_and_availability(product_id: int, quantity_sold: int):
+    """
+    Обновить остатки товара и автоматически скрыть при низких остатках
+    Логика: скрывать при <100г для весового и <1шт для штучного
+    """
+    from database import get_session, Product
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    async with get_session() as session:
+        product = await session.get(Product, product_id)
+        if not product:
+            return {"success": False, "error": "Товар не найден"}
+
+        old_stock = product.stock_grams
+        new_stock = old_stock - quantity_sold
+
+        if new_stock < 0:
+            return {"success": False, "error": f"Недостаточно товара. Доступно: {old_stock}"}
+
+        product.stock_grams = new_stock
+
+        # Автоматическое скрытие товара при низких остатках
+        # Согласно требованиям: <100г для весового и <1шт для штучного
+        should_hide = False
+        reason = ""
+        
+        # Проверяем настройку hide_when_zero
+        if product.hide_when_zero:
+            if product.unit_type == 'grams':
+                # Для весового товара: скрываем если осталось меньше 100г
+                if new_stock < 100:
+                    should_hide = True
+                    reason = "осталось менее 100г"
+            else:  # pieces
+                # Для штучного товара: скрываем если осталось меньше 1шт
+                if new_stock < 1:
+                    should_hide = True
+                    reason = "осталось менее 1шт"
+        else:
+            logger.info(f"Автоскрытие отключено для товара {product.name}")
+
+        if should_hide:
+            product.available = False
+
+        await session.commit()
+
+        if should_hide:
+            logger.info(f"Товар {product.name} (ID: {product.id}) автоматически скрыт: {reason}")
+
+        return {
+            "success": True,
+            "product_name": product.name,
+            "old_stock": old_stock,
+            "new_stock": new_stock,
+            "hidden": should_hide,
+            "reason": reason if should_hide else None
+        }
 
 # Создаем экземпляры сервисов
 cart_service = CartService()

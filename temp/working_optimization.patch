@@ -1,0 +1,53 @@
+--- handlers.py.clean	2026-02-03 15:20:00
++++ handlers.py.optimized	2026-02-03 15:21:00
+@@ -1,8 +1,46 @@
+ """
+-Barkery Bot - handlers.py
++РАБОЧАЯ оптимизация кнопок +/-
+ """
+ import logging
++import asyncio
++import time
++from collections import defaultdict
+ from aiogram import Router, F
+ from aiogram.types import Message, CallbackQuery
+ from aiogram.filters import Command
++from aiogram.exceptions import TelegramBadRequest
++
++from keyboards import product_card_keyboard
++from services import catalog_service, cart_service
++from database import get_session, CartItem
++from sqlalchemy import select
+
+ logger = logging.getLogger(__name__)
+ router = Router()
++
++# ========== РАБОЧАЯ ОПТИМИЗАЦИЯ ==========
++
++class WorkingOptimizer:
++    def __init__(self):
++        self.temp_values = defaultdict(int)
++        self.last_update = defaultdict(float)
++        self.locks = defaultdict(asyncio.Lock)
++    
++    async def process(self, user_id: int, product_id: int, delta: int):
++        key = f"{user_id}_{product_id}"
++        
++        async with self.locks[key]:
++            current = self.temp_values[key]
++            new_val = current + delta
++            
++            if new_val < 0:
++                return {"success": False, "val": 0}
++            
++            self.temp_values[key] = new_val
++            
++            # Дебаунсинг: 500 мс
++            now = time.time()
++            needs_ui = (now - self.last_update.get(key, 0)) > 0.5
++            if needs_ui:
++                self.last_update[key] = now
++            
++            return {"success": True, "val": new_val, "ui": needs_ui}
++
++optimizer = WorkingOptimizer()

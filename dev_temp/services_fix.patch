@@ -1,0 +1,109 @@
+--- services_old.py	2026-02-03 19:32:07
++++ services_new.py	2026-02-03 20:15:00
+@@ -1,5 +1,5 @@
+ from sqlalchemy.sql import func
+-"""
++""" 
+ Бизнес-логика: корзина, заказы, каталог - с исправленными блокировками
+ """
+ import asyncio
+@@ -14,13 +14,40 @@
+ class CartService:
+     """Сервис корзины с улучшенной защитой от race condition"""
+     
+-    def __init__(self):
+-        # Блокировка на уровне пользователя+товар для более точного контроля
+-        self._locks = defaultdict(asyncio.Lock)
++    def __init__(self, lock_ttl_seconds: int = 3600):
++        """
++        Args:
++            lock_ttl_seconds: Время жизни блокировок в секундах (1 час по умолчанию)
++        """
++        # Блокировки с меткой времени последнего использования
++        self._locks_data: Dict[str, Dict] = {}  # key -> {'lock': asyncio.Lock, 'timestamp': float}
++        self._lock_ttl = lock_ttl_seconds
++        self._cleanup_interval = 300  # 5 минут
++        self._last_cleanup = time.time()
++        self._internal_lock = asyncio.Lock()  # Для защиты доступа к _locks_data
+     
+     def _get_lock_key(self, user_id: int, product_id: int = None) -> str:
+         """Ключ для блокировки"""
+         if product_id:
+             return f"user:{user_id}:product:{product_id}"
+         return f"user:{user_id}"
++    
++    async def _get_lock(self, lock_key: str) -> asyncio.Lock:
++        """Получить блокировку с обновлением timestamp"""
++        async with self._internal_lock:
++            # Очистка старых блокировок при необходимости
++            current_time = time.time()
++            if current_time - self._last_cleanup > self._cleanup_interval:
++                await self._cleanup_expired_locks()
++                self._last_cleanup = current_time
++            
++            if lock_key not in self._locks_data:
++                self._locks_data[lock_key] = {
++                    'lock': asyncio.Lock(),
++                    'timestamp': current_time
++                }
++            else:
++                # Обновляем timestamp
++                self._locks_data[lock_key]['timestamp'] = current_time
++            
++            return self._locks_data[lock_key]['lock']
++    
++    async def _cleanup_expired_locks(self):
++        """Очистка устаревших блокировок"""
++        async with self._internal_lock:
++            current_time = time.time()
++            keys_to_remove = []
++            
++            for key, data in self._locks_data.items():
++                if current_time - data['timestamp'] > self._lock_ttl:
++                    keys_to_remove.append(key)
++            
++            for key in keys_to_remove:
++                del self._locks_data[key]
++            
++            if keys_to_remove:
++                logger = logging.getLogger(__name__)
++                logger.debug(f"CartService: очищено {len(keys_to_remove)} устаревших блокировок")
+ 
+     async def get_or_create_user(self, telegram_id: int, username: str = "", full_name: str = "") -> User:
+         """Получить или создать пользователя - ОБНОВЛЕННАЯ ВЕРСИЯ"""
+@@ -47,9 +74,8 @@
+     
+     async def add_to_cart(self, user_id: int, product_id: int, quantity: int) -> Dict:
+         """Добавить товар в корзину с улучшенной блокировкой"""
+-        lock_key = self._get_lock_key(user_id, product_id)
+-        lock = self._locks[lock_key]
+-        
++        lock_key = self._get_lock_key(user_id, product_id)
++        lock = await self._get_lock(lock_key)
+         async with lock:
+             async with get_session() as session:
+                 # Проверяем товар
+@@ -99,9 +125,8 @@
+     
+     async def update_cart_quantity(self, user_id: int, product_id: int, delta: int) -> Dict:
+         """Обновить количество товара в корзине (для +/- кнопок)"""
+-        lock_key = self._get_lock_key(user_id, product_id)
+-        lock = self._locks[lock_key]
+-        
++        lock_key = self._get_lock_key(user_id, product_id)
++        lock = await self._get_lock(lock_key)
+         async with lock:
+             async with get_session() as session:
+                 # Находим элемент корзины
+@@ -179,9 +204,8 @@
+     
+     async def clear_cart(self, user_id: int) -> Dict:
+         """Очистить корзину"""
+-        lock_key = self._get_lock_key(user_id)
+-        lock = self._locks[lock_key]
+-        
++        lock_key = self._get_lock_key(user_id)
++        lock = await self._get_lock(lock_key)
+         async with lock:
+             async with get_session() as session:
+                 stmt = select(CartItem).where(CartItem.user_id == user_id)

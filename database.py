@@ -72,6 +72,7 @@ class Product(Base):
     stock_grams = Column(Integer, default=0, nullable=False)
     unit_type = Column(String, default='grams', nullable=False)  # 'grams' или 'pieces'
     measurement_step = Column(Integer, default=100, nullable=False)  # шаг измерения (100 для грамм, 1 для штук)
+    hide_when_zero = Column(Boolean, default=True, nullable=False)  # Автоматически скрывать при нулевом остатке
     is_active = Column(Boolean, default=True, nullable=False)  # активен ли товар
     
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"))

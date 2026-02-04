@@ -1,5 +1,5 @@
-aiogram>=3.10
-sqlalchemy>=2.0
-aiosqlite>=0.19
-python-dotenv>=1.0
-pillow>=10.0
+aiogram==3.10.0
+SQLAlchemy==2.0.25
+aiosqlite==0.20.0
+python-dotenv==1.0.0
+pytz==2023.3.post1

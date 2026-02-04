@@ -1,0 +1,126 @@
+
+=== handlers.py ===
+  import logging
+  import asyncio
+  from aiogram import Router
+  from aiogram import F
+  from aiogram.types import Message
+  from aiogram.types import CallbackQuery
+  from aiogram.types import InlineKeyboardMarkup
+  from aiogram.types import InlineKeyboardButton
+  from aiogram.filters import Command
+  from aiogram.fsm.context import FSMContext
+  from aiogram.fsm.state import State
+  from aiogram.fsm.state import StatesGroup
+  from aiogram.exceptions import TelegramBadRequest
+  from keyboards import main_menu_keyboard
+  from keyboards import categories_keyboard
+  from keyboards import products_keyboard
+  from keyboards import product_card_keyboard
+  from keyboards import cart_keyboard
+  from keyboards import order_confirmation_keyboard
+  from services import cart_service
+  from services import catalog_service
+  from services import user_service
+  from admin import check_and_notify_out_of_stock
+  from database import get_session
+  from database import Product
+  from database import CartItem
+  from database import User
+  from sqlalchemy import select
+  import sys
+  from services import update_product_stock_and_availability
+  from keyboards import help_keyboard
+  from keyboards import main_menu_keyboard
+  from keyboards import admin_product_management_keyboard
+  import logging
+  from database import Order
+  from database import OrderItem
+  import datetime
+  from notifications import notify_admin
+
+=== admin.py ===
+  import logging
+  from aiogram import Router
+  from aiogram import F
+  from aiogram.types import Message
+  from aiogram.types import CallbackQuery
+  from aiogram.types import InlineKeyboardMarkup
+  from aiogram.types import InlineKeyboardButton
+  from aiogram.filters import Command
+  from aiogram.fsm.context import FSMContext
+  from aiogram.fsm.state import State
+  from aiogram.fsm.state import StatesGroup
+  from sqlalchemy import select
+  from sqlalchemy import func
+  from database import get_session
+  from database import Product
+  from database import Category
+  from database import CartItem
+  from database import User
+  from config import settings
+  from keyboards import admin_main_keyboard
+  from keyboards import admin_categories_keyboard
+  from keyboards import admin_products_keyboard
+  from keyboards import admin_product_management_keyboard
+  from aiogram.types import CallbackQuery
+  from aiogram.types import Message
+  from aiogram.types import CallbackQuery
+  from aiogram.types import Message
+  from aiogram.types import CallbackQuery
+  from aiogram.types import Message
+  from keyboards import admin_main_keyboard
+  from keyboards import admin_categories_keyboard
+  from keyboards import admin_categories_keyboard
+  from database import get_session
+  from database import Category
+  from sqlalchemy import select
+  from keyboards import admin_main_keyboard
+  from keyboards import admin_product_management_keyboard
+  from keyboards import admin_product_management_keyboard
+  from sqlalchemy import select
+  import traceback
+
+=== services.py ===
+  from sqlalchemy import func
+  import asyncio
+  from collections import defaultdict
+  from typing import Dict
+  from typing import List
+  from typing import Optional
+  from sqlalchemy import select
+  from sqlalchemy.ext.asyncio import AsyncSession
+  from database import User
+  from database import Product
+  from database import Category
+  from database import CartItem
+  from database import Order
+  from database import OrderItem
+  from database import get_session
+  from database import get_session
+  from database import Product
+  import logging
+  from database import get_session
+  from database import User
+  from database import UserAddress
+  from database import UserAddress
+
+=== database.py ===
+  from sqlalchemy import Column
+  from sqlalchemy import Integer
+  from sqlalchemy import String
+  from sqlalchemy import Float
+  from sqlalchemy import ForeignKey
+  from sqlalchemy import Boolean
+  from sqlalchemy import DateTime
+  from sqlalchemy import Text
+  from sqlalchemy import UniqueConstraint
+  from sqlalchemy.ext.asyncio import AsyncSession
+  from sqlalchemy.ext.asyncio import create_async_engine
+  from sqlalchemy.ext.asyncio import async_sessionmaker
+  from sqlalchemy.orm import declarative_base
+  from sqlalchemy.orm import relationship
+  from sqlalchemy.sql import func
+  from contextlib import asynccontextmanager
+  import os
+  from dotenv import load_dotenv

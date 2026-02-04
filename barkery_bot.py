@@ -24,32 +24,32 @@ logger = logging.getLogger(__name__)
 async def main():
     logger.info("🚀 Barkery Shop - ЧИСТАЯ ВЕРСИЯ")
     logger.info("=" * 50)
-    
+
     # Инициализация
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
-    
+
     # Устанавливаем настройки бота для удаления клавиатур
     await bot.set_my_commands([])
-    
+
     # ВАЖНО: Админский роутер должен быть ПЕРВЫМ,
     # чтобы он перехватывал админские колбэки
     dp.include_router(admin_router)
     dp.include_router(main_router)
-    
+
     # Инициализация БД
     await init_db()
-    
+
     logger.info(f"👑 Админ ID: {settings.admin_id}")
     logger.info("📱 Только Inline клавиатуры")
     logger.info("🛒 Полный функционал корзины")
     logger.info("✅ Упрощенная архитектура")
     logger.info("=" * 50)
-    
+
     # Сбрасываем webhook
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("✅ Webhook сброшен")
-    
+
     # Запуск
     try:
         logger.info("⏳ Запускаю polling...")

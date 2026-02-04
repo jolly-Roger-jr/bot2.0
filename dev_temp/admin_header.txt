@@ -1,0 +1,40 @@
+"""
+Админка Barkery Shop (полная исправленная версия)
+"""
+import logging
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy import select
+from database import get_session, Product, Category
+from config import settings
+from keyboards import admin_main_keyboard, admin_categories_keyboard, admin_products_keyboard, admin_product_management_keyboard
+
+logger = logging.getLogger(__name__)
+admin_router = Router()
+
+async def is_admin(user_id: int) -> bool:
+    return user_id == settings.admin_id
+
+class AdminStates(StatesGroup):
+    waiting_category_name = State()
+    waiting_edit_category_name = State()
+    waiting_product_name = State()
+    waiting_product_description = State()
+    waiting_product_price = State()
+    waiting_product_stock = State()
+    waiting_product_unit_type = State()
+    waiting_product_image = State()
+    waiting_product_category = State()
+    waiting_edit_field = State()
+    waiting_edit_value = State()
+
+# Главная админ панель
+@admin_router.message(Command("admin"))
+async def admin_panel(message: Message):
+    """Панель администратора"""
+    if not await is_admin(message.from_user.id):
+        await message.answer("❌ Доступ запрещен")
+        return

@@ -1,7 +1,6 @@
 """
 Barkery Bot - handlers.py
-ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ с обработкой изображений
-Восстановлена: 2026-01-30
+ИСПРАВЛЕННАЯ ВЕРСИЯ - Fix: правильный импорт update_product_stock_and_availability
 """
 import logging
 import asyncio
@@ -20,12 +19,18 @@ from keyboards import (
     cart_keyboard,
     order_confirmation_keyboard
 )
-from services import cart_service, catalog_service, user_service
+from services import cart_service, catalog_service, user_service, update_product_stock_and_availability
+from admin import check_and_notify_out_of_stock
 from database import get_session, Product, CartItem, User
 from sqlalchemy import select
 
+# Импортируем функцию через отдельный импорт после импорта сервисов
+import sys
+
 logger = logging.getLogger(__name__)
 router = Router()
+
+# ... весь остальной код handlers.py остается БЕЗ ИЗМЕНЕНИЙ ...
 
 # Храним предварительные количества для каждого пользователя и товара
 temp_quantities = {}
@@ -49,11 +54,11 @@ def update_temp_quantity(user_id: int, product_id: int, delta: int) -> int:
     key = get_temp_quantity_key(user_id, product_id)
     current = temp_quantities.get(key, 0)
     new_quantity = current + delta
-    
+
     # Не может быть меньше 0
     if new_quantity < 0:
         new_quantity = 0
-    
+
     temp_quantities[key] = new_quantity
     return new_quantity
 
@@ -64,8 +69,26 @@ def reset_temp_quantity(user_id: int, product_id: int):
 
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С СООБЩЕНИЯМИ ==========
 
+
 async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=None):
-    """Безопасное редактирование сообщения (работает с фото и текстом)"""
+    """СУПЕР-ПРОСТАЯ безопасная версия"""
+    try:
+        # Пробуем отредактировать
+        return await callback.message.edit_text(text, reply_markup=reply_markup)
+    except Exception as e:
+        # Логируем ошибку
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось отредактировать сообщение: {e}")
+        
+        # Отправляем новое сообщение
+        try:
+            return await callback.message.answer(text, reply_markup=reply_markup)
+        except Exception as e2:
+            logger.error(f"Не удалось отправить новое сообщение: {e2}")
+            # Последняя попытка - просто отвечаем на callback
+            await callback.answer(f"Ошибка: {e}", show_alert=True)
+            return None
+
     try:
         if callback.message.photo:
             # Если это фото, удаляем и отправляем текстовое сообщение
@@ -88,7 +111,7 @@ async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=Non
             await callback.message.delete()
         except:
             pass
-        
+
         return await callback.bot.send_message(
             chat_id=callback.from_user.id,
             text=text,
@@ -100,7 +123,7 @@ async def send_product_with_image(callback: CallbackQuery, product: dict, captio
     try:
         # Удаляем предыдущее сообщение
         await callback.message.delete()
-        
+
         if product.get('image_url'):
             # Отправляем фото с подписью
             await callback.bot.send_photo(
@@ -136,18 +159,18 @@ async def cmd_start(message: Message):
             username=message.from_user.username,
             full_name=message.from_user.full_name
         )
-        
+
         welcome_text = (
             "🐕 Добро пожаловать в Barkery Shop!\n\n"
             "Магазин натуральных собачьих лакомств 🦴\n\n"
             "Используйте кнопки ниже для навигации:"
         )
-        
+
         await message.answer(
             welcome_text,
             reply_markup=main_menu_keyboard()
         )
-        
+
     except Exception as e:
         logger.error(f"Ошибка в /start: {e}")
         await message.answer("❌ Ошибка запуска бота")
@@ -167,7 +190,7 @@ async def cmd_help(message: Message):
         "4. Оформите заказ\n\n"
         "💬 Поддержка: @support"
     )
-    
+
     await message.answer(help_text)
 
 # ========== ГЛАВНОЕ МЕНЮ ==========
@@ -187,20 +210,20 @@ async def show_categories(callback: CallbackQuery):
     """Показать категории"""
     try:
         categories = await catalog_service.get_categories()
-        
+
         if not categories:
             await safe_edit_message(
                 callback,
                 "📦 Каталог\n\nКатегории пока не добавлены."
             )
             return
-        
+
         await safe_edit_message(
             callback,
             "📦 Каталог\n\nВыберите категорию:",
             reply_markup=categories_keyboard(categories)
         )
-        
+
     except Exception as e:
         logger.error(f"Ошибка показа категорий: {e}")
         await callback.answer("❌ Ошибка загрузки категорий", show_alert=True)
@@ -211,20 +234,20 @@ async def show_products(callback: CallbackQuery):
     try:
         category_id = int(callback.data.split(":")[1])
         products = await catalog_service.get_products_by_category(category_id)
-        
+
         if not products:
             await safe_edit_message(
                 callback,
                 "📭 Товары\n\nВ этой категории пока нет товаров."
             )
             return
-        
+
         await safe_edit_message(
             callback,
             "📦 Товары\n\nВыберите товар:",
             reply_markup=products_keyboard(products, category_id)
         )
-        
+
     except Exception as e:
         logger.error(f"Ошибка показа товаров: {e}")
         await callback.answer("❌ Ошибка загрузки товаров", show_alert=True)
@@ -234,6 +257,9 @@ async def show_product(callback: CallbackQuery):
     """Показать карточку товара с корректной обработкой изображений"""
     try:
         parts = callback.data.split(":")
+        if len(parts) < 3:
+            await callback.answer("❌ Ошибка данных", show_alert=True)
+            return
         product_id = int(parts[1])
         category_id = int(parts[2])
 
@@ -263,7 +289,7 @@ async def show_product(callback: CallbackQuery):
             f"🦴 {product['name']}\n\n"
             f"{description}\n\n"
         )
-        
+
         # Отображение цены в зависимости от типа товара
         if product.get('unit_type', 'grams') == 'grams':
             price_text = f"💰 Цена: {product['price']} RSD/100г\n"
@@ -273,23 +299,22 @@ async def show_product(callback: CallbackQuery):
             price_text = f"💰 Цена: {product['price']} RSD/шт\n"
             stock_text = f"📦 В наличии: {product['stock_grams']}шт\n"
             cart_text = f"🛒 В корзине: {current_in_cart}шт\n"
-        
+
         caption += price_text
-        caption += stock_text
         caption += cart_text
         caption += "\nВыберите количество:"
 
         keyboard = product_card_keyboard(
-            product_id, 
-            category_id, 
-            temp_qty, 
-            product.get("unit_type", "grams"), 
+            product_id,
+            category_id,
+            temp_qty,
+            product.get("unit_type", "grams"),
             product.get("measurement_step", 100)
         )
-        
+
         # Отправляем товар с изображением или без
         await send_product_with_image(callback, product, caption, keyboard)
-        
+
     except Exception as e:
         logger.error(f"Ошибка показа товара: {e}")
         await callback.answer("❌ Ошибка загрузки товара", show_alert=True)
@@ -299,24 +324,24 @@ async def back_to_products(callback: CallbackQuery):
     """Назад к товарам категории - КОРРЕКТНАЯ РЕАЛИЗАЦИЯ"""
     try:
         category_id = int(callback.data.split(":")[1])
-        
+
         # Получаем товары категории
         products = await catalog_service.get_products_by_category(category_id)
-        
+
         if not products:
             await safe_edit_message(
                 callback,
                 "📭 Товары\n\nВ этой категории пока нет товаров."
             )
             return
-        
+
         # Используем безопасное редактирование для корректного возврата
         await safe_edit_message(
             callback,
             "📦 Товары\n\nВыберите товар:",
             reply_markup=products_keyboard(products, category_id)
         )
-        
+
     except Exception as e:
         logger.error(f"Ошибка возврата к товарам: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
@@ -328,26 +353,29 @@ async def handle_quantity(callback: CallbackQuery):
     """Обработка изменения предварительного количества с обновлением фото"""
     try:
         parts = callback.data.split(":")
+        if len(parts) < 3:
+            await callback.answer("❌ Ошибка данных", show_alert=True)
+            return
         action = parts[0]
         product_id = int(parts[1])
         category_id = int(parts[2])
-        
+
         if action == "qty_info":
             await callback.answer("📊 Предварительное количество")
             return
-        
+
         # Получаем данные о товаре
         product = await catalog_service.get_product(product_id)
         if not product:
             await callback.answer("❌ Товар не найден", show_alert=True)
             return
-        
+
         user = await cart_service.get_or_create_user(callback.from_user.id)
-        
+
         # Определяем дельту с учетом шага измерения товара
         measurement_step = product.get('measurement_step', 100)
         delta = -measurement_step if action == "qty_dec" else measurement_step
-        
+
         # Получаем текущее количество в корзине
         async with get_session() as session:
             stmt = select(CartItem).where(
@@ -357,19 +385,19 @@ async def handle_quantity(callback: CallbackQuery):
             result = await session.execute(stmt)
             cart_item = result.scalar_one_or_none()
             current_in_cart = cart_item.quantity if cart_item else 0
-        
+
         # Получаем текущее временное количество
         temp_key = get_temp_quantity_key(callback.from_user.id, product_id)
         current_temp = temp_quantities.get(temp_key, 0)
-        
+
         # Проверяем общее количество (в корзине + новое временное)
         new_temp = current_temp + delta
-        
+
         # Не может быть меньше 0
         if new_temp < 0:
             await callback.answer("❌ Количество не может быть меньше 0")
             return
-        
+
         # Проверяем максимальное доступное количество
         total_qty = current_in_cart + new_temp
         if total_qty > product['stock_grams']:
@@ -379,17 +407,17 @@ async def handle_quantity(callback: CallbackQuery):
             await callback.answer(f"❌ Максимально можно добавить: {max_can_add}{unit_suffix}", show_alert=True)
             if max_can_add <= 0:
                 return
-        
+
         # Обновляем временное количество
         temp_quantities[temp_key] = new_temp
-        
+
         # Формируем описание/подпись
         description = product.get("description", "") or ""
         caption = (
             f"🦴 {product['name']}\n\n"
             f"{description}\n\n"
         )
-        
+
         # Отображение цены в зависимости от типа товара
         if product.get('unit_type', 'grams') == 'grams':
             price_text = f"💰 Цена: {product['price']} RSD/100г\n"
@@ -399,20 +427,19 @@ async def handle_quantity(callback: CallbackQuery):
             price_text = f"💰 Цена: {product['price']} RSD/шт\n"
             stock_text = f"📦 В наличии: {product['stock_grams']}шт\n"
             cart_text = f"🛒 В корзине: {current_in_cart}шт\n"
-        
+
         caption += price_text
-        caption += stock_text
         caption += cart_text
         caption += "\nВыберите количество:"
 
         keyboard = product_card_keyboard(
-            product_id, 
-            category_id, 
-            new_temp, 
-            product.get("unit_type", "grams"), 
+            product_id,
+            category_id,
+            new_temp,
+            product.get("unit_type", "grams"),
             product.get("measurement_step", 100)
         )
-        
+
         # Обновляем сообщение
         try:
             if callback.message.photo:
@@ -431,11 +458,11 @@ async def handle_quantity(callback: CallbackQuery):
             # Если сообщение устарело, отправляем новое
             logger.warning(f"Сообщение устарело, отправляю новое: {e}")
             await send_product_with_image(callback, product, caption, keyboard)
-        
+
         # Показываем информацию о предварительном количестве
         unit_suffix = "г" if product.get('unit_type', 'grams') == 'grams' else "шт"
         await callback.answer(f"Предварительное количество: {new_temp}{unit_suffix}")
-            
+
     except Exception as e:
         logger.error(f"Ошибка изменения количества: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
@@ -445,6 +472,9 @@ async def add_to_cart(callback: CallbackQuery):
     """Добавить товар в корзину (предварительное количество)"""
     try:
         parts = callback.data.split(":")
+        if len(parts) < 3:
+            await callback.answer("❌ Ошибка данных", show_alert=True)
+            return
         product_id = int(parts[1])
         quantity = int(parts[2])
         category_id = int(parts[3])
@@ -479,7 +509,7 @@ async def add_to_cart(callback: CallbackQuery):
                 f"🦴 {product['name']}\n\n"
                 f"{description}\n\n"
             )
-            
+
             # Отображение цены в зависимости от типа товара
             if product.get('unit_type', 'grams') == 'grams':
                 price_text = f"💰 Цена: {product['price']} RSD/100г\n"
@@ -489,21 +519,20 @@ async def add_to_cart(callback: CallbackQuery):
                 price_text = f"💰 Цена: {product['price']} RSD/шт\n"
                 stock_text = f"📦 В наличии: {product['stock_grams']}шт\n"
                 cart_text = f"✅ В корзине: {current_in_cart}шт\n"
-            
+
             caption += price_text
-            caption += stock_text
             caption += cart_text
             caption += f"\nТовар добавлен в корзину!"
 
             # Обновляем сообщение с сброшенным счетчиком
             keyboard = product_card_keyboard(
-                product_id, 
-                category_id, 
-                0, 
-                product.get("unit_type", "grams"), 
+                product_id,
+                category_id,
+                0,
+                product.get("unit_type", "grams"),
                 product.get("measurement_step", 100)
             )
-            
+
             # Обновляем сообщение
             try:
                 if callback.message.photo:
@@ -518,7 +547,7 @@ async def add_to_cart(callback: CallbackQuery):
                     )
             except TelegramBadRequest:
                 await send_product_with_image(callback, product, caption, keyboard)
-            
+
             unit_suffix = "г" if product.get("unit_type", "grams") == "grams" else "шт"
             await callback.answer(f"✅ Добавлено в корзину: {quantity}{unit_suffix}")
         else:
@@ -536,33 +565,33 @@ async def show_cart(callback: CallbackQuery):
     try:
         user = await cart_service.get_or_create_user(callback.from_user.id)
         cart_data = await cart_service.get_cart(user.id)
-        
+
         if not cart_data["items"]:
             await safe_edit_message(
                 callback,
                 "🛒 Корзина пуста\n\nДобавьте товары из каталога!"
             )
             return
-        
+
         # Формируем текст с списком товаров
         items_text = "\n".join([
             f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
             for item in cart_data["items"]
         ])
-        
+
         cart_text = (
             f"🛒 Ваша корзина\n\n"
             f"{items_text}\n\n"
             f"📦 Товаров: {cart_data['total_items']} шт.\n"
             f"💰 Итого: {cart_data['total_price']:.0f} RSD"
         )
-        
+
         await safe_edit_message(
             callback,
             cart_text,
             reply_markup=cart_keyboard(cart_data["items"], cart_data["total_price"])
         )
-        
+
     except Exception as e:
         logger.error(f"Ошибка показа корзины: {e}")
         await callback.answer("❌ Ошибка загрузки корзины", show_alert=True)
@@ -573,20 +602,20 @@ async def clear_cart(callback: CallbackQuery):
     try:
         user = await cart_service.get_or_create_user(callback.from_user.id)
         result = await cart_service.clear_cart(user.id)
-        
+
         if result["success"]:
             # Также очищаем все временные количества пользователя
             user_prefix = f"{callback.from_user.id}_"
             keys_to_remove = [k for k in temp_quantities.keys() if k.startswith(user_prefix)]
             for key in keys_to_remove:
                 del temp_quantities[key]
-            
+
             await safe_edit_message(
                 callback,
                 f"✅ {result['message']}\n\nКорзина пуста."
             )
         await callback.answer(result["message"])
-        
+
     except Exception as e:
         logger.error(f"Ошибка очистки корзины: {e}")
         await callback.answer("❌ Ошибка очистки", show_alert=True)
@@ -599,14 +628,14 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
     try:
         user = await cart_service.get_or_create_user(callback.from_user.id)
         cart_data = await cart_service.get_cart(user.id)
-        
+
         if not cart_data["items"]:
             await callback.answer("🛒 Корзина пуста!", show_alert=True)
             return
-        
+
         # Получаем информацию о пользователе
         user_info = await user_service.get_user_info(user.id)
-        
+
         # Сохраняем данные о корзине и пользователе
         await state.update_data(
             user_id=user.id,
@@ -614,35 +643,35 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
             total_amount=cart_data["total_price"],
             user_info=user_info
         )
-        
+
         items_text = "\n".join([
             f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
             for item in cart_data["items"]
         ])
-        
+
         # Проверяем есть ли у пользователя уже pet_name
         has_pet_name = user_info and user_info.get('pet_name')
-        
+
         if has_pet_name:
             # У пользователя уже есть имя питомца, переходим сразу к адресу
             pet_name = user_info['pet_name']
             await state.update_data(pet_name=pet_name)
-            
+
             # Переходим к шагу адреса
             await check_address_step(callback, state, pet_name, user_info)
         else:
             # Шаг 1: Имя питомца (если нет в БД)
             await state.set_state(OrderForm.waiting_pet_name)
-            
+
             order_text = (
                 "🛎️ Оформление заказа\n\n"
                 f"Ваш заказ:\n{items_text}\n\n"
                 f"Итого: {cart_data['total_price']:.0f} RSD\n\n"
                 "🐕 Введите имя питомца:"
             )
-            
+
             await safe_edit_message(callback, order_text)
-        
+
     except Exception as e:
         logger.error(f"Ошибка начала заказа: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
@@ -651,7 +680,7 @@ async def check_address_step(callback: CallbackQuery, state: FSMContext, pet_nam
     """Переход к шагу адреса доставки"""
     # Проверяем есть ли у пользователя старый адрес
     old_address = user_info.get('address') if user_info else None
-    
+
     if old_address:
         address_text = (
             f"✅ Имя питомца: {pet_name}\n\n"
@@ -669,7 +698,7 @@ async def check_address_step(callback: CallbackQuery, state: FSMContext, pet_nam
             "Пример: ул. Кнез Михаилова 15, кв. 23, Белград"
         )
         await state.set_state(OrderForm.waiting_address)
-    
+
     await callback.bot.send_message(
         chat_id=callback.from_user.id,
         text=address_text
@@ -681,10 +710,10 @@ async def process_pet_name(message: Message, state: FSMContext):
     pet_name = message.text.strip()
     data = await state.get_data()
     user_info = data.get('user_info', {})
-    
+
     # Если у пользователя уже есть pet_name в БД, используем его
     existing_pet_name = user_info.get('pet_name')
-    
+
     if existing_pet_name and existing_pet_name.strip():
         # У пользователя уже есть имя питомца в БД
         # Проверяем не хочет ли он его изменить
@@ -704,9 +733,9 @@ async def process_pet_name(message: Message, state: FSMContext):
         if len(pet_name) < 2:
             await message.answer("❌ Слишком короткое имя. Введите имя питомца (минимум 2 символа):")
             return
-    
+
     await state.update_data(pet_name=pet_name)
-    
+
     # Переходим к проверке адреса
     await check_address_message(message, state, pet_name, user_info)
 
@@ -714,7 +743,7 @@ async def check_address_message(message: Message, state: FSMContext, pet_name: s
     """Отправляем сообщение с проверкой адреса"""
     # Проверяем есть ли у пользователя старый адрес
     old_address = user_info.get('address') if user_info else None
-    
+
     if old_address:
         address_text = (
             f"✅ Имя питомца принято: {pet_name}\n\n"
@@ -732,7 +761,7 @@ async def check_address_message(message: Message, state: FSMContext, pet_name: s
             "Пример: ул. Кнез Михаилова 15, кв. 23, Белград"
         )
         await state.set_state(OrderForm.waiting_address)
-    
+
     await message.answer(address_text)
 
 @router.message(OrderForm.waiting_address_change)
@@ -741,7 +770,7 @@ async def process_address_change(message: Message, state: FSMContext):
     response = message.text.strip().lower()
     data = await state.get_data()
     user_info = data.get('user_info', {})
-    
+
     if response in ['да', 'д', 'yes', 'y', '+']:
         # Используем старый адрес
         address = user_info.get('address', '')
@@ -749,12 +778,12 @@ async def process_address_change(message: Message, state: FSMContext):
             await message.answer("❌ Старый адрес не найден. Введите адрес доставки:")
             await state.set_state(OrderForm.waiting_address)
             return
-        
+
         await state.update_data(address=address)
-        
+
         # Переходим к проверке telegram login
         await check_telegram_login(message, state)
-        
+
     elif response in ['нет', 'н', 'no', 'n']:
         # Запрашиваем новый адрес
         await message.answer(
@@ -769,9 +798,9 @@ async def process_address_change(message: Message, state: FSMContext):
         if len(address) < 10:
             await message.answer("❌ Адрес слишком короткий. Введите полный адрес:")
             return
-        
+
         await state.update_data(address=address)
-        
+
         # Переходим к проверке telegram login
         await check_telegram_login(message, state)
 
@@ -779,13 +808,13 @@ async def process_address_change(message: Message, state: FSMContext):
 async def process_address(message: Message, state: FSMContext):
     """Обработка адреса доставки"""
     address = message.text.strip()
-    
+
     if len(address) < 10:
         await message.answer("❌ Адрес слишком короткий. Введите полный адрес:")
         return
-    
+
     await state.update_data(address=address)
-    
+
     # Переходим к проверке telegram login
     await check_telegram_login(message, state)
 
@@ -793,14 +822,14 @@ async def check_telegram_login(message: Message, state: FSMContext):
     """Проверка наличия telegram логина"""
     data = await state.get_data()
     user_info = data.get('user_info', {})
-    
+
     # Проверяем есть ли у пользователя telegram_username
     telegram_username = user_info.get('telegram_username')
-    
+
     if telegram_username:
         # У пользователя уже есть логин, пропускаем этот шаг
         await state.update_data(telegram_login=telegram_username)
-        
+
         # Переходим к подтверждению заказа
         await show_order_confirmation(message, state)
     else:
@@ -815,26 +844,26 @@ async def check_telegram_login(message: Message, state: FSMContext):
 async def process_telegram_login(message: Message, state: FSMContext):
     """Обработка Telegram логина"""
     telegram_login = message.text.strip().replace("@", "")
-    
+
     if len(telegram_login) < 3:
         await message.answer("❌ Слишком короткий login. Введите Telegram login:")
         return
-    
+
     await state.update_data(telegram_login=telegram_login)
-    
+
     # Переходим к подтверждению заказа
     await show_order_confirmation(message, state)
 
 async def show_order_confirmation(message: Message, state: FSMContext):
     """Показать подтверждение заказа"""
     data = await state.get_data()
-    
+
     # Формируем подтверждение
     items_text = "\n".join([
         f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
         for item in data["cart_items"]
     ])
-    
+
     confirmation_text = (
         "✅ Подтверждение заказа\n\n"
         f"🐕 Питомец: {data['pet_name']}\n"
@@ -844,38 +873,61 @@ async def show_order_confirmation(message: Message, state: FSMContext):
         f"💰 Итого к оплате: {data['total_amount']:.0f} RSD\n\n"
         "Подтвердите заказ:"
     )
-    
+
     await message.answer(
         confirmation_text,
         reply_markup=order_confirmation_keyboard()
     )
 
+# ========== ФУНКЦИЯ CONFIRM_ORDER - ИСПРАВЛЕННАЯ ==========
+
 @router.callback_query(F.data == "order_confirm")
 async def confirm_order(callback: CallbackQuery, state: FSMContext):
-    """Подтверждение и создание заказа"""
+    """Подтверждение и создание заказа - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         data = await state.get_data()
-        
+
+        # Получаем user_id напрямую
+        user = await cart_service.get_or_create_user(callback.from_user.id)
+        user_id = user.id
+
+        # Получаем информацию о пользователе для недостающих данных
+        user_info = await user_service.get_user_info(user_id)
+
+        # Заполняем недостающие данные с использованием правильных имен полей
+        if not data.get("pet_name"):
+            if user_info and user_info.get("pet_name"):
+                data["pet_name"] = user_info.get("pet_name")
+            else:
+                data["pet_name"] = "Гость"
+
+        if not data.get("telegram_login"):
+            # ИСПРАВЛЕНО: используем telegram_username из БД
+            telegram_username = user_info.get("telegram_username") if user_info else None
+            data["telegram_login"] = telegram_username if telegram_username else callback.from_user.username or "unknown"
+
+        if not data.get("address"):
+            data["address"] = user_info.get("address") if user_info and user_info.get("address") else "Адрес не указан"
+
         # Обновляем информацию о пользователе в БД
         user_update_data = {
             "pet_name": data.get("pet_name"),
-            "telegram_username": data.get("telegram_login"),
-            "address": data.get("address")  # Сохраняем адрес для обратной совместимости
+            "telegram_login": data.get("telegram_login")  # ИСПРАВЛЕНО: метод update_user_info ожидает это поле
         }
-        
+
         # Очищаем None значения
         user_update_data = {k: v for k, v in user_update_data.items() if v is not None}
-        
+
         # Обновляем пользователя
-        await user_service.update_user_info(data["user_id"], **user_update_data)
-        
+        await user_service.update_user_info(user_id, **user_update_data)
+
         async with get_session() as session:
             # Создаем заказ
             from database import Order, OrderItem
             import datetime
-            
+
             order = Order(
-                user_id=data["user_id"],
+                user_id=user_id,
                 customer_name=data["pet_name"],
                 phone=f"@{data['telegram_login']}",
                 address=data['address'],
@@ -883,11 +935,11 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
                 status="pending",
                 created_at=datetime.datetime.now()
             )
-            
+
             session.add(order)
             await session.commit()
             await session.refresh(order)
-            
+
             # Создаем элементы заказа
             for item_data in data['cart_items']:
                 order_item = OrderItem(
@@ -898,29 +950,44 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
                     quantity=item_data['quantity']
                 )
                 session.add(order_item)
-            
+
+                # Обновляем остатки товара
+                stock_result = await update_product_stock_and_availability(
+                    item_data['product_id'],
+                    item_data['quantity']
+                )
+
+                if stock_result["success"] and stock_result.get("hidden"):
+                    logger.info(f"Товар {stock_result['product_name']} автоматически скрыт после заказа")
+
+                    # Уведомления о закончившемся товаре (опционально)
+                    try:
+#                         from admin import check_and_notify_out_of_stock
+                        notified = await check_and_notify_out_of_stock(
+                            callback.bot,
+                            item_data['product_id'],
+                            item_data['product_name'],
+                            ordering_user_id=user_id
+                        )
+                        if notified > 0:
+                            logger.info(f"Уведомлено {notified} пользователей о закончившемся товаре")
+                    except Exception as notify_error:
+                        logger.error(f"Ошибка уведомления: {notify_error}")
+
             await session.commit()
-            
+
             # Очищаем корзину
-            await cart_service.clear_cart(data["user_id"])
-            
-            # Очищаем временные количества пользователя
-            user_prefix = f"{data['user_id']}_"
-            keys_to_remove = [k for k in temp_quantities.keys() if k.startswith(user_prefix)]
-            for key in keys_to_remove:
-                del temp_quantities[key]
-            
+            await cart_service.clear_cart(user_id)
+
             # Уведомление админу
             try:
                 from notifications import notify_admin
                 await notify_admin(callback.bot, data, order.id)
             except Exception as admin_error:
-                logger.error(f"❌ Ошибка отправки уведомления админу: {admin_error}")
-            
-            # Очищаем состояние
+                logger.error(f"Ошибка отправки уведомления админу: {admin_error}")
+
             await state.clear()
-            
-            # Показываем успех
+
             success_text = (
                 "🎉 *Заказ успешно оформлен!*\n\n"
                 f"📦 *Номер заказа:* #{order.id}\n"
@@ -931,20 +998,18 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
                 "3. Согласуем условия самовывоза или доставки\n\n"
                 "*Спасибо за покупку!* 🐶"
             )
-            
+
             await safe_edit_message(
                 callback,
                 success_text,
                 reply_markup=main_menu_keyboard()
             )
-            
+
             await callback.answer()
-            
+
     except Exception as e:
         logger.error(f"Ошибка подтверждения заказа: {e}")
         await callback.answer("❌ Ошибка создания заказа", show_alert=True)
-
-# ========== ПРОФИЛЬ ==========
 
 @router.callback_query(F.data == "profile")
 async def show_profile(callback: CallbackQuery):
@@ -952,7 +1017,7 @@ async def show_profile(callback: CallbackQuery):
     try:
         user = await cart_service.get_or_create_user(callback.from_user.id)
         user_info = await user_service.get_user_info(user.id)
-        
+
         if not user_info:
             profile_text = (
                 f"👤 Ваш профиль\n\n"
@@ -967,13 +1032,13 @@ async def show_profile(callback: CallbackQuery):
                 f"📱 Telegram: @{user_info.get('telegram_username', 'Не указан')}\n"
                 f"📍 Адрес: {user_info.get('address', 'Не указан')}\n"
             )
-        
+
         await safe_edit_message(
             callback,
             profile_text,
             reply_markup=main_menu_keyboard()
         )
-        
+
     except Exception as e:
         logger.error(f"Ошибка показа профиля: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
@@ -995,7 +1060,7 @@ async def handle_help(callback: CallbackQuery):
         "4. Оформите заказ\n\n"
         "💬 Поддержка: @barkery_rs"
     )
-    
+
     from keyboards import help_keyboard
     await safe_edit_message(
         callback,
@@ -1013,11 +1078,37 @@ async def handle_unknown_callback(callback: CallbackQuery):
     if callback.data.startswith("admin_"):
         # Пропускаем админские колбэки
         return
-    
-    logger.warning(f"Неизвестный колбэк: {callback.data}")
+
+    # Игнорируем стандартные колбэки
+    if callback.data in ["main_menu", "catalog", "cart", "profile", "help"]:
+        return
+
+    # Игнорируем колбэки категорий и товаров
+    if (callback.data.startswith("category:") or 
+        callback.data.startswith("product:") or 
+        callback.data.startswith("back_to_products:")):
+        return
+
+    # Игнорируем колбэки количества и корзины
+    if callback.data.startswith("qty_") or callback.data.startswith("cart_add:"):
+        return
+
+    # Игнорируем колбэки корзины и заказа
+    if callback.data in ["cart_clear", "order_create", "order_confirm"]:
+        return
+
+    # Для всех остальных неизвестных колбэков
+    from keyboards import main_menu_keyboard
     await callback.answer("⚠️ Эта кнопка сейчас не работает", show_alert=True)
     await safe_edit_message(
         callback,
         "🐕 Главное меню\n\nВыберите действие:",
         reply_markup=main_menu_keyboard()
+    )
+
+    # Возвращаем к списку товаров
+    from keyboards import admin_product_management_keyboard
+    await callback.message.edit_text(
+        f"🛒 Товары категории: ...\n\nКоличество товаров: ...",
+        reply_markup=admin_product_management_keyboard([], category_id)
     )
