@@ -171,6 +171,10 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
     )
     
     builder.row(
+        InlineKeyboardButton(text="📊 Статистика", callback_data="admin_statistics")
+    )
+    
+    builder.row(
         InlineKeyboardButton(text="➕ Добавить товар", callback_data="admin_add_product")
     )
     
@@ -328,3 +332,24 @@ def admin_product_edit_keyboard(product_id: int, category_id: int) -> InlineKeyb
     )
     
     return builder.as_markup()
+
+# Обновленная функция главного меню админки (или замените существующую)
+def admin_main_keyboard() -> InlineKeyboardMarkup:
+    """Главное меню админки"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.row(
+        InlineKeyboardButton(text="📦 Управление категориями", callback_data="admin_categories"),
+        InlineKeyboardButton(text="🛒 Управление товарами", callback_data="admin_products")
+    )
+    
+    builder.row(
+        InlineKeyboardButton(text="📊 Статистика", callback_data="admin_statistics")
+    )
+    
+    builder.row(
+        InlineKeyboardButton(text="➕ Добавить товар", callback_data="admin_add_product")
+    )
+    
+    return builder.as_markup()
+

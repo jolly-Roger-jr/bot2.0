@@ -3,9 +3,8 @@ Barkery Bot - handlers.py
 ИСПРАВЛЕННАЯ ВЕРСИЯ - Fix: правильный импорт update_product_stock_and_availability
 """
 import logging
-import asyncio
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -21,11 +20,11 @@ from keyboards import (
 )
 from services import cart_service, catalog_service, user_service, update_product_stock_and_availability
 from admin import check_and_notify_out_of_stock
-from database import get_session, Product, CartItem, User
+from database import get_session, CartItem
 from sqlalchemy import select
+from error_handling import order_error_handler
 
 # Импортируем функцию через отдельный импорт после импорта сервисов
-import sys
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -1039,9 +1038,14 @@ async def show_profile(callback: CallbackQuery):
             reply_markup=main_menu_keyboard()
         )
 
+
     except Exception as e:
-        logger.error(f"Ошибка показа профиля: {e}")
-        await callback.answer("❌ Ошибка", show_alert=True)
+
+        logger.error(f"Ошибка подтверждения заказа: {e}")
+
+        error_message = await order_error_handler.handle_order_error(e, callback.from_user.id)
+
+        await callback.answer(error_message, show_alert=True)
 
 # ========== ПОМОЩЬ ==========
 

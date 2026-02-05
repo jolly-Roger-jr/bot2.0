@@ -177,3 +177,63 @@ async def init_db():
         # так как мы используем ту же таблицу с новыми полями
         print("✅ База данных инициализирована (миграция выполнена)")
 
+
+    """Модель лога ошибок заказов"""
+    __tablename__ = "order_errors"
+    
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    error_type = Column(String, nullable=False)
+    error_message = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    order_data = Column(Text, nullable=True)
+    recovery_action = Column(String, nullable=True)
+    resolved = Column(Boolean, default=False, nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+
+
+    """Модель лога ошибок заказов"""
+    __tablename__ = "order_errors"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    error_type = Column(String, nullable=False)
+    error_message = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved = Column(Boolean, default=False, nullable=False)
+
+    """Модель лога ошибок заказов"""
+    __tablename__ = "order_errors"
+    
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    error_type = Column(String, nullable=False)
+    error_message = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved = Column(Boolean, default=False, nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    """Модель лога ошибок заказов"""
+    __tablename__ = "order_errors"
+    
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    error_type = Column(String, nullable=False)
+    error_message = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved = Column(Boolean, default=False, nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+class OrderErrorLog(Base):
+    """Модель лога ошибок заказов"""
+    __tablename__ = "order_errors"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    error_type = Column(String, nullable=False)
+    error_message = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved = Column(Boolean, default=False, nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+

@@ -3,8 +3,10 @@
 Barkery Shop - Чистая версия
 Интернет-магазин натуральных собачьих лакомств
 """
+from logging_config import setup_logging, OperationLogger  # Добавьте эту строку
 import asyncio
 import logging
+setup_logging()
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -56,10 +58,20 @@ async def main():
         await dp.start_polling(bot)
     except KeyboardInterrupt:
         logger.info("⏹️ Остановлен пользователем")
+        OperationLogger.log_operation(
+            operation="bot_shutdown",
+            status="info",
+            details={"reason": "keyboard_interrupt"}
+        )
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
         import traceback
         logger.error(traceback.format_exc())
+        OperationLogger.log_operation(
+            operation="bot_shutdown",
+            status="error",
+            error=str(e)
+        )
         raise
 
 if __name__ == "__main__":
