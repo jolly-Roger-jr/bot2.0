@@ -16,6 +16,43 @@ from keyboards import admin_main_keyboard, admin_categories_keyboard, admin_prod
 logger = logging.getLogger(__name__)
 admin_router = Router()
 
+# Обработчик удаления товара
+@admin_router.callback_query(F.data.startswith("admin_delete_product:"))
+async def admin_delete_product_handler(callback: CallbackQuery):
+    """ПРОСТЕЙШИЙ обработчик удаления - ТОЛЬКО ДЛЯ ТЕСТА"""
+    # 1. СРАЗУ показываем что обработчик вызвался
+    await callback.answer("🚨 Обработчик ВЫЗВАН!", show_alert=True)
+
+    # 2. Разбираем данные
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("❌ Ошибка формата данных", show_alert=True)
+        return
+
+    product_id = int(parts[1])
+    category_id = int(parts[2])
+
+    # 3. ПРОСТОЕ удаление из БД
+    from database import get_session, Product
+
+    async with get_session() as session:
+        product = await session.get(Product, product_id)
+        if not product:
+            await callback.answer("❌ Товар не найден в БД", show_alert=True)
+            return
+
+        product_name = product.name
+
+        # УДАЛЕНИЕ
+        await session.delete(product)
+        await session.commit()
+
+    # 4. Результат
+    await callback.answer(f"✅ УДАЛЕНО из БД: {product_name}", show_alert=True)
+
+    # 5. Простое сообщение
+    await callback.message.answer(f"🗑️ Товар '{product_name}' удален из базы данных")
+
 async def is_admin(user_id: int) -> bool:
     return user_id == settings.admin_id
 
@@ -1291,52 +1328,3 @@ async def admin_back(callback: CallbackQuery):
     )
     await callback.answer()
 
-# Обработчик удаления товара
-@admin_router.callback_query(F.data.startswith("admin_delete_product:"))
-async def admin_delete_product_handler(callback: CallbackQuery):
-    """Удаление товара"""
-    if not await is_admin(callback.from_user.id):
-        await callback.answer("⛔ Нет доступа", show_alert=True)
-        return
-    
-    parts = callback.data.split(":")
-    product_id = int(parts[1])
-    category_id = int(parts[2])
-    
-    async with get_session() as session:
-        product = await session.get(Product, product_id)
-        if not product:
-            await callback.answer("❌ Товар не найден", show_alert=True)
-            return
-        
-        product_name = product.name
-        await session.delete(product)
-        await session.commit()
-        await callback.answer(f"✅ Товар '{product_name}' удален")
-
-        # Возвращаем к обновленному списку товаров
-
-        # Получаем обновленный список товаров
-        stmt = select(Product).where(Product.category_id == category_id)
-        result = await session.execute(stmt)
-        products = result.scalars().all()
-
-        products_list = [
-            {
-                "id": p.id,
-                "name": p.name,
-                "price": p.price,
-                "stock_grams": p.stock_grams,
-                "available": p.available,
-                "unit_type": p.unit_type
-            }
-            for p in products
-        ]
-
-        # Показываем категорию
-        category = await session.get(Category, category_id)
-        await callback.message.edit_text(
-            f"🛒 Товары категории: {category.name}\n\n"
-            f"Количество товаров: {len(products_list)}",
-            reply_markup=admin_product_management_keyboard(products_list, category_id)
-        )
