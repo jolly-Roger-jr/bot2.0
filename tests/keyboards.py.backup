@@ -15,7 +15,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
     builder.row(
-        InlineKeyboardButton(text="🛒 Корзина", callback_data="cart"),
+        InlineKeyboardButton(text="🛒 Корзина", callback_data="cart_check"),
         InlineKeyboardButton(text="👤 Профиль", callback_data="profile")
     )
 

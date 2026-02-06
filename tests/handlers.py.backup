@@ -1,6 +1,6 @@
 """
 Barkery Bot - handlers.py
-ИСПРАВЛЕННАЯ ВЕРСИЯ - правильный импорт update_product_stock_and_availability
+ИСПРАВЛЕННАЯ ВЕРСИЯ - Fix: правильный импорт update_product_stock_and_availability
 """
 import logging
 from aiogram import Router, F
@@ -24,8 +24,12 @@ from database import get_session, CartItem, Category
 from sqlalchemy import select
 from error_handling import order_error_handler
 
+# Импортируем функцию через отдельный импорт после импорта сервисов
+
 logger = logging.getLogger(__name__)
 router = Router()
+
+# ... весь остальной код handlers.py остается БЕЗ ИЗМЕНЕНИЙ ...
 
 # Храним предварительные количества для каждого пользователя и товара
 temp_quantities = {}
@@ -64,6 +68,7 @@ def reset_temp_quantity(user_id: int, product_id: int):
 
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С СООБЩЕНИЯМИ ==========
 
+
 async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=None):
     """СУПЕР-ПРОСТАЯ безопасная версия"""
     try:
@@ -71,8 +76,9 @@ async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=Non
         return await callback.message.edit_text(text, reply_markup=reply_markup)
     except Exception as e:
         # Логируем ошибку
+        logger = logging.getLogger(__name__)
         logger.warning(f"Не удалось отредактировать сообщение: {e}")
-
+        
         # Отправляем новое сообщение
         try:
             return await callback.message.answer(text, reply_markup=reply_markup)
@@ -81,6 +87,35 @@ async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=Non
             # Последняя попытка - просто отвечаем на callback
             await callback.answer(f"Ошибка: {e}", show_alert=True)
             return None
+
+    try:
+        if callback.message.photo:
+            # Если это фото, удаляем и отправляем текстовое сообщение
+            await callback.message.delete()
+            return await callback.bot.send_message(
+                chat_id=callback.from_user.id,
+                text=text,
+                reply_markup=reply_markup
+            )
+        else:
+            # Если это текст, редактируем
+            return await callback.message.edit_text(
+                text,
+                reply_markup=reply_markup
+            )
+    except Exception as e:
+        # Если не удалось, удаляем и отправляем заново
+        logger.error(f"Ошибка безопасного редактирования: {e}")
+        try:
+            await callback.message.delete()
+        except:
+            pass
+
+        return await callback.bot.send_message(
+            chat_id=callback.from_user.id,
+            text=text,
+            reply_markup=reply_markup
+        )
 
 async def send_product_with_image(callback: CallbackQuery, product: dict, caption: str, keyboard):
     """Отправка товара с изображением или без"""
@@ -201,6 +236,7 @@ async def show_categories(callback: CallbackQuery):
         logger.error(f"Ошибка показа категорий: {e}")
         await callback.answer("❌ Ошибка загрузки категорий", show_alert=True)
 
+
 # Обновляем обработку категорий:
 @router.callback_query(F.data.startswith("category:"))
 async def show_products(callback: CallbackQuery):
@@ -231,6 +267,30 @@ async def show_products(callback: CallbackQuery):
         await safe_edit_message(
             callback,
             f"📦 Товары категории: {category_name}\n\nВыберите товар:",
+            reply_markup=products_keyboard(products, category_id)
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка показа товаров: {e}")
+        await callback.answer("❌ Ошибка загрузки товаров", show_alert=True)
+
+@router.callback_query(F.data.startswith("category:"))
+async def show_products(callback: CallbackQuery):
+    """Показать товары категории"""
+    try:
+        category_id = int(callback.data.split(":")[1])
+        products = await catalog_service.get_products_by_category(category_id)
+
+        if not products:
+            await safe_edit_message(
+                callback,
+                "📭 Товары\n\nВ этой категории пока нет товаров."
+            )
+            return
+
+        await safe_edit_message(
+            callback,
+            "📦 Товары\n\nВыберите товар:",
             reply_markup=products_keyboard(products, category_id)
         )
 
@@ -545,40 +605,40 @@ async def add_to_cart(callback: CallbackQuery):
 
 # ========== КОРЗИНА ==========
 
-@router.callback_query(F.data.in_(["cart", "cart_check"]))
-async def universal_cart_handler(callback: CallbackQuery):
-    """Универсальный обработчик кнопки корзины - для всех мест"""
-    try:
-        user = await cart_service.get_or_create_user(callback.from_user.id)
-        cart_data = await cart_service.get_cart(user.id)
-
-        if not cart_data["items"]:
-            # Корзина пуста - показываем всплывающее сообщение
-            await callback.answer("🛒 В вашей корзине пока ничего нет", show_alert=True)
-            return
-
-        # Корзина не пуста - показываем ее содержимое
-        items_text = "\n".join([
-            f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
-            for item in cart_data["items"]
-        ])
-
-        cart_text = (
-            f"🛒 Ваша корзина\n\n"
-            f"{items_text}\n\n"
-            f"📦 Товаров: {cart_data['total_items']} шт.\n"
-            f"💰 Итого: {cart_data['total_price']:.0f} RSD"
-        )
-
-        await safe_edit_message(
-            callback,
-            cart_text,
-            reply_markup=cart_keyboard(cart_data["items"], cart_data["total_price"])
-        )
-
-    except Exception as e:
-        logger.error(f"Ошибка показа корзины: {e}")
-        await callback.answer("❌ Ошибка", show_alert=True)
+@router.callback_query(F.data == "cart")
+# async def show_cart(callback: CallbackQuery):
+#     """Показать корзину с проверкой на пустоту"""
+#     try:
+#         user = await cart_service.get_or_create_user(callback.from_user.id)
+#         cart_data = await cart_service.get_cart(user.id)
+# 
+#         if not cart_data["items"]:
+#             # Корзина пуста - показываем всплывающее уведомление и остаемся на месте
+#             await callback.answer("🛒 В вашей корзине пока ничего нет", show_alert=True)
+#             return
+# 
+#         # Корзина не пуста - показываем ее содержимое
+#         items_text = "\n".join([
+#             f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
+#             for item in cart_data["items"]
+#         ])
+# 
+#         cart_text = (
+#             f"🛒 Ваша корзина\n\n"
+#             f"{items_text}\n\n"
+#             f"📦 Товаров: {cart_data['total_items']} шт.\n"
+#             f"💰 Итого: {cart_data['total_price']:.0f} RSD"
+#         )
+# 
+#         await safe_edit_message(
+#             callback,
+#             cart_text,
+#             reply_markup=cart_keyboard(cart_data["items"], cart_data["total_price"])
+#         )
+# 
+#     except Exception as e:
+#         logger.error(f"Ошибка показа корзины: {e}")
+        await callback.answer("❌ Ошибка загрузки корзины", show_alert=True)
 
 @router.callback_query(F.data == "cart_clear")
 async def clear_cart(callback: CallbackQuery):
@@ -959,6 +1019,7 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
 
                     # Уведомления о закончившемся товаре (опционально)
                     try:
+#                         from admin import check_and_notify_out_of_stock
                         notified = await check_and_notify_out_of_stock(
                             callback.bot,
                             item_data['product_id'],
@@ -1035,9 +1096,13 @@ async def show_profile(callback: CallbackQuery):
             reply_markup=main_menu_keyboard()
         )
 
+
     except Exception as e:
-        logger.error(f"Ошибка показа профиля: {e}")
+
+        logger.error(f"Ошибка подтверждения заказа: {e}")
+
         error_message = await order_error_handler.handle_order_error(e, callback.from_user.id)
+
         await callback.answer(error_message, show_alert=True)
 
 # ========== ПОМОЩЬ ==========
@@ -1093,7 +1158,7 @@ async def handle_unknown_callback(callback: CallbackQuery):
     if callback.data in ["cart_clear", "order_create", "order_confirm"]:
         return
 
-    if callback.data in ["cart", "cart_check"]:
+    if callback.data in ["cart", "cart_check",]:
         return
 
     # Для всех остальных неизвестных колбэков
@@ -1103,4 +1168,95 @@ async def handle_unknown_callback(callback: CallbackQuery):
         "🐕 Главное меню\n\nВыберите действие:",
         reply_markup=main_menu_keyboard()
     )
-    
+
+@router.callback_query(F.data == "cart_check")
+# async def check_and_show_cart(callback: CallbackQuery):
+#     """Проверить корзину и показать или уведомить"""
+#     try:
+#         user = await cart_service.get_or_create_user(callback.from_user.id)
+#         cart_data = await cart_service.get_cart(user.id)
+# 
+#         if not cart_data["items"]:
+#             # Корзина пуста - показываем всплывающее сообщение
+#             await callback.answer("🛒 Корзина пуста! Добавьте товары из каталога", show_alert=True)
+#             # Остаемся на месте (ничего не делаем)
+#             return
+# 
+#         # Корзина не пуста - переходим в корзину
+#         await show_cart(callback)
+# 
+#     except Exception as e:
+#         logger.error(f"Ошибка проверки корзины: {e}")
+#         await callback.answer("❌ Ошибка", show_alert=True)
+# 
+# @router.callback_query(F.data == "cart")
+async def show_cart(callback: CallbackQuery):
+    """Показать корзину (из главного меню)"""
+    try:
+        user = await cart_service.get_or_create_user(callback.from_user.id)
+        cart_data = await cart_service.get_cart(user.id)
+
+        if not cart_data["items"]:
+            await safe_edit_message(
+                callback,
+                "🛒 Корзина пуста\n\nДобавьте товары из каталога!"
+            )
+            return
+
+        # Формируем текст с списком товаров
+        items_text = "\n".join([
+            f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
+            for item in cart_data["items"]
+        ])
+
+        cart_text = (
+            f"🛒 Ваша корзина\n\n"
+            f"{items_text}\n\n"
+            f"📦 Товаров: {cart_data['total_items']} шт.\n"
+            f"💰 Итого: {cart_data['total_price']:.0f} RSD"
+        )
+
+        await safe_edit_message(
+            callback,
+            cart_text,
+            reply_markup=cart_keyboard(cart_data["items"], cart_data["total_price"])
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка показа корзины: {e}")
+        await callback.answer("❌ Ошибка загрузки корзины", show_alert=True)
+
+@router.callback_query(F.data.in_(["cart", "cart_check", "cart_from_category"]))
+async def universal_cart_handler(callback: CallbackQuery):
+    """Универсальный обработчик кнопки корзины - для всех мест"""
+    try:
+        user = await cart_service.get_or_create_user(callback.from_user.id)
+        cart_data = await cart_service.get_cart(user.id)
+
+        if not cart_data["items"]:
+            # Корзина пуста - показываем всплывающее сообщение
+            await callback.answer("🛒 В вашей корзине пока ничего нет", show_alert=True)
+            return
+
+        # Корзина не пуста - показываем ее содержимое
+        items_text = "\n".join([
+            f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
+            for item in cart_data["items"]
+        ])
+
+        cart_text = (
+            f"🛒 Ваша корзина\n\n"
+            f"{items_text}\n\n"
+            f"📦 Товаров: {cart_data['total_items']} шт.\n"
+            f"💰 Итого: {cart_data['total_price']:.0f} RSD"
+        )
+
+        await safe_edit_message(
+            callback,
+            cart_text,
+            reply_markup=cart_keyboard(cart_data["items"], cart_data["total_price"])
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка показа корзины: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
