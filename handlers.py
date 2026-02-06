@@ -20,7 +20,7 @@ from keyboards import (
 )
 from services import cart_service, catalog_service, user_service, update_product_stock_and_availability
 from admin import check_and_notify_out_of_stock
-from database import get_session, CartItem
+from database import get_session, CartItem, Category
 from sqlalchemy import select
 from error_handling import order_error_handler
 
@@ -210,7 +210,16 @@ async def show_categories(callback: CallbackQuery):
     try:
         categories = await catalog_service.get_categories()
 
-        if not categories:
+        # Добавляем виртуальную категорию "Гипоаллергенные"
+        categories_with_hypo = list(categories)  # Копируем список
+
+        # Добавляем специальную категорию (ID можно выбрать, например, 999)
+        categories_with_hypo.append({
+            "id": 999,
+            "name": "🥕🐟Гипоаллергенные🐏🎃"
+        })
+
+        if not categories_with_hypo:
             await safe_edit_message(
                 callback,
                 "📦 Каталог\n\nКатегории пока не добавлены."
@@ -220,12 +229,50 @@ async def show_categories(callback: CallbackQuery):
         await safe_edit_message(
             callback,
             "📦 Каталог\n\nВыберите категорию:",
-            reply_markup=categories_keyboard(categories)
+            reply_markup=categories_keyboard(categories_with_hypo)
         )
 
     except Exception as e:
         logger.error(f"Ошибка показа категорий: {e}")
         await callback.answer("❌ Ошибка загрузки категорий", show_alert=True)
+
+
+# Обновляем обработку категорий:
+@router.callback_query(F.data.startswith("category:"))
+async def show_products(callback: CallbackQuery):
+    """Показать товары категории"""
+    try:
+        category_id = int(callback.data.split(":")[1])
+
+        # Проверяем, это гипоаллергенная категория или обычная
+        if category_id == 999:
+            # Гипоаллергенные товары
+            products = await catalog_service.get_hypoallergenic_products()
+            category_name = "🎃🐟Гипоаллергенные🐏🥕"
+        else:
+            # Обычные товары категории
+            products = await catalog_service.get_products_by_category(category_id)
+            # Получаем название категории
+            async with get_session() as session:
+                category = await session.get(Category, category_id)
+                category_name = category.name if category else f"Категория {category_id}"
+
+        if not products:
+            await safe_edit_message(
+                callback,
+                f"📭 Товары\n\nВ категории '{category_name}' пока нет товаров."
+            )
+            return
+
+        await safe_edit_message(
+            callback,
+            f"📦 Товары категории: {category_name}\n\nВыберите товар:",
+            reply_markup=products_keyboard(products, category_id)
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка показа товаров: {e}")
+        await callback.answer("❌ Ошибка загрузки товаров", show_alert=True)
 
 @router.callback_query(F.data.startswith("category:"))
 async def show_products(callback: CallbackQuery):

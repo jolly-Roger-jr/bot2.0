@@ -199,6 +199,51 @@ class CartService:
 
 class CatalogService:
     """Сервис каталога"""
+
+    async def get_hypoallergenic_products(self) -> List[Dict]:
+        """Получить все гипоаллергенные товары"""
+        async with get_session() as session:
+            stmt = select(Product).where(
+                Product.is_hypoallergenic == True,
+                Product.available == True,
+                Product.is_active == True,
+                ((Product.hide_when_zero == False) |
+                 ((Product.unit_type == "grams") & (Product.stock_grams >= 100)) |
+                 ((Product.unit_type == "pieces") & (Product.stock_grams >= 1)))
+            ).order_by(Product.name)
+
+            result = await session.execute(stmt)
+            products = result.scalars().all()
+
+            return [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "description": p.description,
+                    "price": p.price,
+                    "stock_grams": p.stock_grams,
+                    "image_url": p.image_url,
+                    "available": p.available,
+                    "is_active": p.is_active,
+                    "unit_type": p.unit_type,
+                    "measurement_step": p.measurement_step,
+                    "is_hypoallergenic": p.is_hypoallergenic,
+                    "category_id": p.category_id
+                }
+                for p in products
+            ]
+
+    async def update_product_hypoallergenic(self, product_id: int, is_hypoallergenic: bool) -> Dict:
+        """Обновить флаг гипоаллергенности товара"""
+        async with get_session() as session:
+            product = await session.get(Product, product_id)
+            if not product:
+                return {"success": False, "error": "Товар не найден"}
+
+            product.is_hypoallergenic = is_hypoallergenic
+            await session.commit()
+
+            return {"success": True, "product": product}
     
     async def get_categories(self) -> List[Dict]:
         """Получить все категории"""

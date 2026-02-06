@@ -3,24 +3,21 @@
 Barkery Shop - Чистая версия
 Интернет-магазин натуральных собачьих лакомств
 """
-from logging_config import setup_logging, OperationLogger  # Добавьте эту строку
 import asyncio
 import logging
-setup_logging()
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
 from config import settings
 from database import init_db
-from admin import admin_router  # Импортируем ПЕРВЫМ
+from admin import admin_router
 from handlers import router as main_router
 
 # Настраиваем логирование
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+from logging_config import setup_logging
+setup_logging()
+
 logger = logging.getLogger(__name__)
 
 async def main():
@@ -58,6 +55,7 @@ async def main():
         await dp.start_polling(bot)
     except KeyboardInterrupt:
         logger.info("⏹️ Остановлен пользователем")
+        from logging_config import OperationLogger
         OperationLogger.log_operation(
             operation="bot_shutdown",
             status="info",
@@ -67,6 +65,7 @@ async def main():
         logger.error(f"❌ Критическая ошибка: {e}")
         import traceback
         logger.error(traceback.format_exc())
+        from logging_config import OperationLogger
         OperationLogger.log_operation(
             operation="bot_shutdown",
             status="error",

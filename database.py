@@ -20,31 +20,31 @@ Base = declarative_base()
 # ========== МОДЕЛИ ==========
 
 class User(Base):
-    """Модель пользователя - ОБНОВЛЕНА"""
+    """Модель пользователя - ОБНОВЛЕННАЯ"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
     telegram_id = Column(String, unique=True, nullable=False, index=True)
-    
+
     # Основная информация из заказа
     pet_name = Column(String, nullable=True)  # Имя питомца
     telegram_username = Column(String, nullable=True)  # Telegram логин (без @)
-    
+
     # Контактная информация
     phone = Column(String, nullable=True)
-    
+
     # Дополнительная информация о собаке
     instagram = Column(String, nullable=True)
     dog_breed = Column(String, nullable=True)  # Порода собаки
     allergies = Column(String, nullable=True)  # Наличие аллергии
     notes = Column(Text, nullable=True)  # Примечания
-    
+
     # Системные поля
     full_name = Column(String, nullable=True)  # Полное имя пользователя (из Telegram)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_active = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     last_order_date = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Резервные поля для миграции
     address = Column(Text, nullable=True)  # Старый адрес (для обратной совместимости)
     telegram_login_backup = Column(String, nullable=True)
@@ -59,6 +59,7 @@ class Category(Base):
     name = Column(String, unique=True, nullable=False)
 
 
+# В классе Product добавляем новое поле:
 class Product(Base):
     """Модель товара"""
     __tablename__ = "products"
@@ -74,7 +75,10 @@ class Product(Base):
     measurement_step = Column(Integer, default=100, nullable=False)  # шаг измерения (100 для грамм, 1 для штук)
     hide_when_zero = Column(Boolean, default=True, nullable=False)  # Автоматически скрывать при нулевом остатке
     is_active = Column(Boolean, default=True, nullable=False)  # активен ли товар
-    
+
+    # НОВОЕ ПОЛЕ:
+    is_hypoallergenic = Column(Boolean, default=False, nullable=False)  # Гипоаллергенный
+
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"))
     category = relationship("Category")
 
@@ -87,10 +91,10 @@ class CartItem(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
     quantity = Column(Integer, nullable=False)  # количество в граммах
-    
+
     user = relationship("User")
     product = relationship("Product")
-    
+
     __table_args__ = (
         UniqueConstraint('user_id', 'product_id', name='uq_cart_user_product'),
     )
@@ -103,11 +107,11 @@ class Order(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     customer_name = Column(String, nullable=False)
     phone = Column(String, nullable=False)
     address = Column(Text, nullable=False)
-    
+
     status = Column(String, default="pending", nullable=False)
     total_amount = Column(Float, nullable=False)
 
@@ -119,7 +123,7 @@ class OrderItem(Base):
     id = Column(Integer, primary_key=True)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"))
-    
+
     product_name = Column(String, nullable=False)
     price_per_100g = Column(Float, nullable=False)
     quantity = Column(Integer, nullable=False)  # количество в граммах
@@ -128,14 +132,27 @@ class OrderItem(Base):
 class UserAddress(Base):
     """Модель адресов доставки пользователя"""
     __tablename__ = "user_addresses"
-    
+
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     address = Column(Text, nullable=False)
     is_default = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     user = relationship("User")
+
+
+class OrderErrorLog(Base):
+    """Модель лога ошибок заказов"""
+    __tablename__ = "order_errors"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    error_type = Column(String, nullable=False)
+    error_message = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved = Column(Boolean, default=False, nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ========== СЕССИИ И ENGINE ==========
@@ -172,68 +189,7 @@ async def init_db():
     async with engine.begin() as conn:
         # Создаем таблицы (SQLAlchemy автоматически обновит структуру)
         await conn.run_sync(Base.metadata.create_all)
-        
+
         # Для SQLite миграция будет выполнена автоматически,
         # так как мы используем ту же таблицу с новыми полями
         print("✅ База данных инициализирована (миграция выполнена)")
-
-
-    """Модель лога ошибок заказов"""
-    __tablename__ = "order_errors"
-    
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    error_type = Column(String, nullable=False)
-    error_message = Column(String, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    order_data = Column(Text, nullable=True)
-    recovery_action = Column(String, nullable=True)
-    resolved = Column(Boolean, default=False, nullable=False)
-    resolved_at = Column(DateTime(timezone=True), nullable=True)
-    notes = Column(Text, nullable=True)
-
-
-    """Модель лога ошибок заказов"""
-    __tablename__ = "order_errors"
-
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    error_type = Column(String, nullable=False)
-    error_message = Column(String, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    resolved = Column(Boolean, default=False, nullable=False)
-
-    """Модель лога ошибок заказов"""
-    __tablename__ = "order_errors"
-    
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    error_type = Column(String, nullable=False)
-    error_message = Column(String, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    resolved = Column(Boolean, default=False, nullable=False)
-    resolved_at = Column(DateTime(timezone=True), nullable=True)
-
-    """Модель лога ошибок заказов"""
-    __tablename__ = "order_errors"
-    
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    error_type = Column(String, nullable=False)
-    error_message = Column(String, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    resolved = Column(Boolean, default=False, nullable=False)
-    resolved_at = Column(DateTime(timezone=True), nullable=True)
-
-class OrderErrorLog(Base):
-    """Модель лога ошибок заказов"""
-    __tablename__ = "order_errors"
-
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    error_type = Column(String, nullable=False)
-    error_message = Column(String, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    resolved = Column(Boolean, default=False, nullable=False)
-    resolved_at = Column(DateTime(timezone=True), nullable=True)
-

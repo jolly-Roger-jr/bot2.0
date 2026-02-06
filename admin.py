@@ -1,7 +1,3 @@
-"""
-Админка Barkery Shop (полная исправленная версия)
-Версия с исправленной логикой уведомлений
-"""
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -16,42 +12,7 @@ from keyboards import admin_main_keyboard, admin_categories_keyboard, admin_prod
 logger = logging.getLogger(__name__)
 admin_router = Router()
 
-# Обработчик удаления товара
-@admin_router.callback_query(F.data.startswith("admin_delete_product:"))
-async def admin_delete_product_handler(callback: CallbackQuery):
-    """ПРОСТЕЙШИЙ обработчик удаления - ТОЛЬКО ДЛЯ ТЕСТА"""
-    # 1. СРАЗУ показываем что обработчик вызвался
-    await callback.answer("🚨 Обработчик ВЫЗВАН!", show_alert=True)
-
-    # 2. Разбираем данные
-    parts = callback.data.split(":")
-    if len(parts) != 3:
-        await callback.answer("❌ Ошибка формата данных", show_alert=True)
-        return
-
-    product_id = int(parts[1])
-    category_id = int(parts[2])
-
-    # 3. ПРОСТОЕ удаление из БД
-    from database import get_session, Product
-
-    async with get_session() as session:
-        product = await session.get(Product, product_id)
-        if not product:
-            await callback.answer("❌ Товар не найден в БД", show_alert=True)
-            return
-
-        product_name = product.name
-
-        # УДАЛЕНИЕ
-        await session.delete(product)
-        await session.commit()
-
-    # 4. Результат
-    await callback.answer(f"✅ УДАЛЕНО из БД: {product_name}", show_alert=True)
-
-    # 5. Простое сообщение
-    await callback.message.answer(f"🗑️ Товар '{product_name}' удален из базы данных")
+# Удаляю дублирующий обработчик удаления товара (оставляю только один в конце файла)
 
 async def is_admin(user_id: int) -> bool:
     return user_id == settings.admin_id
@@ -74,6 +35,7 @@ class AdminStates(StatesGroup):
     waiting_product_unit_type = State()
     waiting_product_image = State()
     waiting_product_category = State()
+    waiting_product_hypoallergenic = State()
     waiting_edit_field = State()
     waiting_edit_description = State()
     waiting_edit_confirm_name = State()
@@ -85,6 +47,7 @@ class AdminStates(StatesGroup):
     waiting_edit_confirm_category = State()
     waiting_edit_final_save = State()
     waiting_edit_value = State()
+
 
 
 # Главная админ панель
@@ -349,10 +312,12 @@ async def admin_add_product_handler(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Нет категорий. Сначала создайте категорию.", show_alert=True)
         return
 
-    await state.update_data(available_categories=categories)
+    # Сохраняем категории как список словарей для надежности
+    categories_list = [{"id": cat.id, "name": cat.name} for cat in categories]
+    await state.update_data(available_categories=categories_list)
     await state.set_state(AdminStates.waiting_product_name)
 
-    categories_text = "\n".join([f"{cat.id}. {cat.name}" for cat in categories])
+    categories_text = "\n".join([f"{cat['id']}. {cat['name']}" for cat in categories_list])
     await callback.message.edit_text(
         "➕ Добавление нового товара\n\n"
         f"Доступные категории:\n{categories_text}\n\n"
@@ -477,7 +442,7 @@ async def process_product_stock_create(message: Message, state: FSMContext):
 @admin_router.message(AdminStates.waiting_product_unit_type)
 @admin_router.message(AdminStates.waiting_product_image)
 async def process_product_image(message: Message, state: FSMContext):
-    """Обработка изображения товара"""
+    """Обработка изображения товара - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     image_url = None
 
     if message.text and message.text.strip().lower() in ['пропустить', 'skip', 'без изображения']:
@@ -490,26 +455,30 @@ async def process_product_image(message: Message, state: FSMContext):
         await message.answer("❌ Пожалуйста, загрузите изображение или отправьте 'пропустить'")
         return
 
+    # Сохраняем URL изображения в состоянии
     await state.update_data(image_url=image_url)
 
-    # Получаем список категорий из состояния
+    # Логируем текущие данные
     data = await state.get_data()
-    categories = data.get('available_categories', [])
+    logger.info(f"Данные перед выбором категории: {list(data.keys())}")
+
+    # Получаем список категорий из состояния
+    categories = data.get('available_categories')
 
     if not categories:
         # Если категории утеряны, получаем их заново из БД
-        from database import get_session, Category
-        from sqlalchemy import select
-
+        logger.warning("Категории утеряны в состоянии, загружаю заново")
         async with get_session() as session:
             stmt = select(Category).order_by(Category.name)
             result = await session.execute(stmt)
             categories = result.scalars().all()
 
             if categories:
-                # Сохраняем в состоянии
-                await state.update_data(available_categories=categories)
-                categories_text = "\n".join([f"{cat.id}. {cat.name}" for cat in categories])
+                # Сохраняем в состоянии как список словарей для надежности
+                categories_list = [{"id": cat.id, "name": cat.name} for cat in categories]
+                await state.update_data(available_categories=categories_list)
+
+                categories_text = "\n".join([f"{cat['id']}. {cat['name']}" for cat in categories_list])
 
                 await state.set_state(AdminStates.waiting_product_category)
                 await message.answer(
@@ -522,134 +491,351 @@ async def process_product_image(message: Message, state: FSMContext):
                 await message.answer("❌ В базе данных нет категорий. Сначала создайте категории.")
                 await state.clear()
                 return
+    else:
+        # Преобразуем объекты в словари если нужно
+        if isinstance(categories[0], Category):
+            categories_list = [{"id": cat.id, "name": cat.name} for cat in categories]
+            await state.update_data(available_categories=categories_list)
+        else:
+            categories_list = categories
 
-    # Если категории есть, продолжаем как обычно
-    categories_text = "\n".join([f"{cat.id}. {cat.name}" for cat in categories])
-    await state.set_state(AdminStates.waiting_product_category)
+        categories_text = "\n".join([f"{cat['id']}. {cat['name']}" for cat in categories_list])
 
-    await message.answer(
-        f"✅ Изображение обработано\n\n"
-        f"Доступные категории:\n{categories_text}\n\n"
-        "Шаг 6 из 6: Введите ID категории для товара:"
-    )
+        await state.set_state(AdminStates.waiting_product_category)
+        await message.answer(
+            f"✅ Изображение обработано\n\n"
+            f"Доступные категории:\n{categories_text}\n\n"
+            "Шаг 6 из 6: Введите ID категории для товара:"
+        )
+
 
 @admin_router.message(AdminStates.waiting_product_category)
 async def process_product_category(message: Message, state: FSMContext):
-    """Обработка категории товара"""
+    """Обработка категории товара - с добавлением гипоаллергенности"""
     try:
         category_id = int(message.text.strip())
 
         # Получаем данные из состояния
         data = await state.get_data()
-        categories = data.get('available_categories', [])
+        logger.info(f"Данные при выборе категории: {list(data.keys())}")
+
+        # Проверяем наличие всех необходимых данных
+        required_fields = ['product_name', 'price', 'stock', 'unit_type', 'measurement_step']
+        missing = []
+        for field in required_fields:
+            if field not in data:
+                missing.append(field)
+
+        if missing:
+            await message.answer(f"❌ Ошибка: отсутствуют данные: {missing}. Начните заново.")
+            await state.clear()
+
+            # Возвращаем к началу добавления товара
+            from keyboards import admin_main_keyboard
+            await message.answer(
+                "👑 Панель администратора\n\nВыберите действие:",
+                reply_markup=admin_main_keyboard()
+            )
+            return
 
         # Проверяем существование категории
+        categories = data.get('available_categories', [])
         category_exists = False
+        category_name = None
+
         for cat in categories:
-            if cat.id == category_id:
+            # Обрабатываем как объект или словарь
+            if isinstance(cat, dict) and cat['id'] == category_id:
                 category_exists = True
+                category_name = cat['name']
+                break
+            elif hasattr(cat, 'id') and cat.id == category_id:
+                category_exists = True
+                category_name = cat.name
                 break
 
         if not category_exists:
-            await message.answer(f"❌ Категория с ID {category_id} не найдена. Введите ID из списка:")
+            # Пробуем проверить в базе данных
+            async with get_session() as session:
+                category = await session.get(Category, category_id)
+                if category:
+                    category_exists = True
+                    category_name = category.name
+                else:
+                    await message.answer(f"❌ Категория с ID {category_id} не найдена. Введите ID из списка:")
+                    return
+
+        # ВАЖНОЕ ИЗМЕНЕНИЕ: ВМЕСТО создания товара, переходим к следующему шагу
+
+        # Сохраняем данные категории в состоянии
+        await state.update_data(
+            category_id=category_id,
+            category_name=category_name or str(category_id)
+        )
+
+        # Переходим к вопросу о гипоаллергенности
+        await state.set_state(AdminStates.waiting_product_hypoallergenic)
+
+        await message.answer(
+            f"✅ Категория принята: {category_name or category_id}\n\n"
+            "🔬 Это гипоаллергенный товар?\n\n"
+            "Отвечайте 'да' или 'нет':\n"
+            "• да - товар появится в категории 'Гипоаллергенные'\n"
+            "• нет - обычный товар"
+        )
+
+    except ValueError:
+        await message.answer("❌ Введите число (ID категории):")
+    except Exception as e:
+        logger.error(f"Ошибка при выборе категории: {e}")
+        import traceback
+        logger.error(f"Трассировка: {traceback.format_exc()}")
+        await message.answer(f"❌ Ошибка: {str(e)}")
+        await state.clear()
+
+
+@admin_router.message(AdminStates.waiting_product_hypoallergenic)
+async def process_product_hypoallergenic(message: Message, state: FSMContext):
+    """Обработка флага гипоаллергенности - создание товара"""
+    response = message.text.strip().lower()
+
+    # Определяем флаг
+    if response in ['да', 'д', 'yes', 'y', '+']:
+        is_hypoallergenic = True
+        hypo_text = "гипоаллергенный"
+    elif response in ['нет', 'н', 'no', 'n', '-']:
+        is_hypoallergenic = False
+        hypo_text = "обычный"
+    else:
+        await message.answer("❌ Ответьте 'да' или 'нет':")
+        return
+
+    try:
+        # Получаем ВСЕ данные из состояния
+        data = await state.get_data()
+        logger.info(f"Данные при создании товара: {list(data.keys())}")
+
+        # Еще раз проверяем наличие всех данных (на всякий случай)
+        required_fields = ['product_name', 'price', 'stock', 'unit_type', 'measurement_step', 'category_id']
+        missing = []
+        for field in required_fields:
+            if field not in data:
+                missing.append(field)
+
+        if missing:
+            await message.answer(f"❌ Ошибка: отсутствуют данные: {missing}. Начните заново.")
+            await state.clear()
+
+            from keyboards import admin_main_keyboard
+            await message.answer(
+                "👑 Панель администратора\n\nВыберите действие:",
+                reply_markup=admin_main_keyboard()
+            )
             return
 
-        # Создаем товар
+        # Создаем товар с флагом гипоаллергенности
         async with get_session() as session:
-            # Проверяем наличие всех необходимых данных
-            required_fields = ['product_name', 'price', 'stock', 'unit_type', 'measurement_step', 'category_id']
-            missing = []
-            for field in required_fields:
-                if field not in data:
-                    missing.append(field)
-
-            if missing:
-                await message.answer(f"❌ Ошибка: отсутствуют данные: {missing}")
-                await state.clear()
-                return
-
             product = Product(
                 name=data['product_name'],
                 description=data.get('description', ''),
                 price=data['price'],
                 stock_grams=data['stock'],
                 image_url=data.get('image_url'),
-                unit_type=data.get('unit_type', 'grams'),
-                measurement_step=data.get('measurement_step', 100),
+                unit_type=data['unit_type'],
+                measurement_step=data['measurement_step'],
+                is_hypoallergenic=is_hypoallergenic,  # НОВОЕ ПОЛЕ
                 available=True,
                 is_active=True,
-                category_id=category_id
+                category_id=data['category_id']
             )
 
             session.add(product)
             await session.commit()
             await session.refresh(product)
 
+        # Формируем информативное сообщение
+        category_info = data.get('category_name', f"ID: {data['category_id']}")
+
+        # Определяем единицы измерения для отображения
+        if data['unit_type'] == 'grams':
+            unit_text = '100г'
+            stock_text = f"{data['stock']}г"
+        else:
+            unit_text = 'шт'
+            stock_text = f"{data['stock']}шт"
+
         await message.answer(
             f"✅ Товар успешно создан!\n\n"
-            f"Название: {product.name}\n"
-            f"Цена: {product.price} RSD/{'100г' if product.unit_type == 'grams' else 'шт'}\n"
-            f"Количество: {product.stock_grams} ({'грамм' if product.unit_type == 'grams' else 'штук'})\n"
-            f"Категория ID: {product.category_id}\n"
-            f"Товар ID: {product.id}"
+            f"📦 Название: {data['product_name']}\n"
+            f"💰 Цена: {data['price']} RSD/{unit_text}\n"
+            f"📊 Количество: {stock_text}\n"
+            f"📂 Категория: {category_info}\n"
+            f"🔬 Тип: {hypo_text}\n"
+            f"🆔 ID товара: {product.id}"
         )
 
-        # Возвращаем к списку товаров
-        await state.clear()
-        from keyboards import admin_main_keyboard
-        await message.answer(
-            "👑 Панель администратора\n\nВыберите действие:",
-            reply_markup=admin_main_keyboard()
-        )
+        # Возвращаем к списку товаров в этой категории
+        await show_products_after_edit(message, data['category_id'])
 
-    except ValueError:
-        await message.answer("❌ Введите число (ID категории):")
     except Exception as e:
         logger.error(f"Ошибка создания товара: {e}")
-        logger.error(f"Данные в состоянии: {data}")
         import traceback
         logger.error(f"Трассировка: {traceback.format_exc()}")
         await message.answer(f"❌ Ошибка при создании товара: {str(e)}")
+
+    finally:
+        # Всегда очищаем состояние
         await state.clear()
 
-@admin_router.callback_query(F.data.startswith("admin_toggle_product:"))
-async def admin_toggle_product_handler(callback: CallbackQuery):
-    """Включение/выключение товара"""
+
+@admin_router.callback_query(F.data.startswith("admin_toggle_hypoallergenic:"))
+async def admin_toggle_hypoallergenic_handler(callback: CallbackQuery):
+    """Включение/выключение гипоаллергенности товара"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
+
     parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer("❌ Ошибка формата", show_alert=True)
+        return
+
     product_id = int(parts[1])
     category_id = int(parts[2])
+
     async with get_session() as session:
         product = await session.get(Product, product_id)
         if not product:
             await callback.answer("❌ Товар не найден", show_alert=True)
             return
-        product.available = not product.available
+
+        # Меняем флаг
+        old_status = product.is_hypoallergenic
+        new_status = not old_status
+        product.is_hypoallergenic = new_status
         await session.commit()
-        status = "включен" if product.available else "выключен"
-        await callback.answer(f"✅ Товар '{product.name}' {status}")
+
+        status_text = "гипоаллергенный" if new_status else "обычный"
+        await callback.answer(f"✅ Товар теперь {status_text}")
+
         # Обновляем список товаров
         category = await session.get(Category, category_id)
+        if not category:
+            await callback.answer("❌ Категория не найдена", show_alert=True)
+            return
+
         stmt = select(Product).where(Product.category_id == category_id)
         result = await session.execute(stmt)
         products = result.scalars().all()
+
         products_list = [
             {
                 "id": p.id,
                 "name": p.name,
                 "price": p.price,
                 "stock_grams": p.stock_grams,
-                "available": p.available
+                "available": p.available,
+                "unit_type": p.unit_type,
+                "is_hypoallergenic": p.is_hypoallergenic  # Добавляем флаг
             }
             for p in products
         ]
-        await callback.message.edit_text(
-            f"🛒 Товары категории: {category.name}\n\n"
-            f"Количество товаров: {len(products_list)}",
-            reply_markup=admin_product_management_keyboard(products_list, category_id)
-        )
+
+        # Пытаемся безопасно обновить сообщение
+        try:
+            await callback.message.edit_text(
+                f"🛒 Товары категории: {category.name}\n\n"
+                f"Количество товаров: {len(products_list)}",
+                reply_markup=admin_product_management_keyboard(products_list, category_id)
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отредактировать сообщение: {e}")
+            # Отправляем новое сообщение
+            await callback.message.answer(
+                f"🛒 Товары категории: {category.name}\n\n"
+                f"Количество товаров: {len(products_list)}",
+                reply_markup=admin_product_management_keyboard(products_list, category_id)
+            )
+
+
+@admin_router.callback_query(F.data.startswith("admin_toggle_product:"))
+async def admin_toggle_product_handler(callback: CallbackQuery):
+    """Включение/выключение товара - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ Нет доступа", show_alert=True)
+        return
+
+    parts = callback.data.split(":")
+    product_id = int(parts[1])
+    category_id = int(parts[2])
+
+    async with get_session() as session:
+        product = await session.get(Product, product_id)
+        if not product:
+            await callback.answer("❌ Товар не найден", show_alert=True)
+            return
+
+        # ИСПРАВЛЕНО: Когда включаем товар, проверяем остатки
+        old_status = product.available
+        new_status = not old_status
+
+        # Если ВКЛЮЧАЕМ товар, проверяем остатки
+        if new_status:
+            # Для весового товара: включаем только если >= 100г
+            if product.unit_type == 'grams' and product.stock_grams < 100:
+                await callback.answer(
+                    f"⚠️ Нельзя включить весовой товар. Остатки: {product.stock_grams}г (< 100г)",
+                    show_alert=True
+                )
+                return
+
+            # Для штучного товара: включаем только если >= 1шт
+            elif product.unit_type == 'pieces' and product.stock_grams < 1:
+                await callback.answer(
+                    f"⚠️ Нельзя включить штучный товар. Остатки: {product.stock_grams}шт (< 1шт)",
+                    show_alert=True
+                )
+                return
+
+        product.available = new_status
+        await session.commit()
+
+        status_text = "включен" if new_status else "выключен"
+        await callback.answer(f"✅ Товар '{product.name}' {status_text}")
+
+        # Обновляем список товаров
+        category = await session.get(Category, category_id)
+        stmt = select(Product).where(Product.category_id == category_id)
+        result = await session.execute(stmt)
+        products = result.scalars().all()
+
+        products_list = [
+            {
+                "id": p.id,
+                "name": p.name,
+                "price": p.price,
+                "stock_grams": p.stock_grams,
+                "available": p.available,
+                "unit_type": p.unit_type  # Добавляем unit_type для корректного отображения
+            }
+            for p in products
+        ]
+
+        # ИСПРАВЛЕНО: Используем безопасное редактирование
+        try:
+            await callback.message.edit_text(
+                f"🛒 Товары категории: {category.name}\n\n"
+                f"Количество товаров: {len(products_list)}",
+                reply_markup=admin_product_management_keyboard(products_list, category_id)
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отредактировать сообщение: {e}")
+            # Отправляем новое сообщение
+            await callback.message.answer(
+                f"🛒 Товары категории: {category.name}\n\n"
+                f"Количество товаров: {len(products_list)}",
+                reply_markup=admin_product_management_keyboard(products_list, category_id)
+            )
 
 # Обновление остатков товара
 @admin_router.callback_query(F.data.startswith("admin_update_stock:"))
@@ -764,8 +950,6 @@ async def admin_edit_product_price_handler(callback: CallbackQuery, state: FSMCo
             )
     await callback.answer()
 
-# Редактирование единиц измерения товара
-
 # Редактирование описания товара
 @admin_router.callback_query(F.data.startswith("admin_edit_product_description:"))
 async def admin_edit_product_description_handler(callback: CallbackQuery, state: FSMContext):
@@ -798,6 +982,7 @@ async def admin_edit_product_description_handler(callback: CallbackQuery, state:
                 "Введите новое описание товара (или 'нет' для удаления):"
             )
     await callback.answer()
+
 @admin_router.callback_query(F.data.startswith("admin_edit_product_units:"))
 async def admin_edit_product_units_handler(callback: CallbackQuery, state: FSMContext):
     """Редактирование единиц измерения товара - исправленная версия"""
@@ -964,9 +1149,7 @@ async def process_edit_field(message: Message, state: FSMContext):
         await message.answer("❌ Ошибка обновления товара")
         await state.clear()
 
-# Удаление товара
-
-# ========== ПРОСТОЕ ПОШАГОВОЕ РЕДАКТИРОВАНИЕ ==========
+# ========== ПОЛНОЕ ПОШАГОВОЕ РЕДАКТИРОВАНИЕ ТОВАРА ==========
 
 @admin_router.callback_query(F.data.startswith("admin_edit_product_full:"))
 async def admin_edit_product_full_handler(callback: CallbackQuery, state: FSMContext):
@@ -1008,7 +1191,7 @@ async def show_edit_step(callback_or_message, state: FSMContext):
             await state.clear()
             return
 
-                # Получаем название категории безопасно
+        # Получаем название категории безопасно
         category_name = "неизвестно"
         if product.category_id:
             category = await session.get(Category, product.category_id)
@@ -1044,174 +1227,212 @@ async def show_edit_step(callback_or_message, state: FSMContext):
         else:
             await callback_or_message.answer(message_text)
 
-        # Устанавливаем соответствующее состояние
-        state_name = f"waiting_edit_confirm_{field_key}"
-        if hasattr(AdminStates, state_name):
-            await state.set_state(getattr(AdminStates, state_name))
-        else:
-            # Если состояния нет, используем общее
-            await state.set_state(AdminStates.waiting_edit_confirm_name)
+        # Устанавливаем состояние для обработки ответа да/нет
+        await state.set_state(AdminStates.waiting_edit_value)
+        await state.update_data(
+            current_field=field_key,
+            current_field_name=field_name,
+            current_step=step,
+            product_unit_type=product.unit_type
+        )
 
-# Дубликат удален: @admin_router.message(AdminStates.waiting_edit_confirm_name)
-# Дубликат удален: @admin_router.message(AdminStates.waiting_edit_confirm_name)
+
+@admin_router.message(AdminStates.waiting_edit_value)
 async def process_edit_step_response(message: Message, state: FSMContext):
-    """Обработка ответа на шаге редактирования"""
+    """Обработка ответа 'да/нет' на шаге редактирования - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    logger = logging.getLogger(__name__)
+
+    # Проверяем, что есть текст
+    if not message.text:
+        # Это может быть фото для шага изображения
+        data = await state.get_data()
+        field_key = data.get('current_field')
+
+        if field_key == 'image':
+            # Обрабатываем изображение
+            await process_edit_image_value(message, state)
+            return
+        else:
+            await message.answer("❌ Ожидается текстовый ответ 'да' или 'нет'")
+            return
+
     response = message.text.strip().lower()
     data = await state.get_data()
-    step = data.get('edit_step', 0)
-
-    # Определяем поле на основе шага
-    field_mapping = {
-        0: ("name", "Введите новое название:", AdminStates.waiting_edit_confirm_description),
-        1: ("description", "Введите новое описание (или 'нет' для удаления):", AdminStates.waiting_edit_confirm_price),
-        2: ("price", "Введите новую цену (например: 750/шт или 500/гр):", AdminStates.waiting_edit_confirm_stock),
-        3: ("stock", "Введите новое количество:", AdminStates.waiting_edit_confirm_unit_type),
-        4: ("unit_type", "Выберите единицы: 1 - граммы, 2 - штуки:", AdminStates.waiting_edit_confirm_image),
-        5: ("image", "Загрузите новое изображение или отправьте 'пропустить':", AdminStates.waiting_edit_confirm_category),
-        6: ("category", "Введите ID новой категории:", AdminStates.waiting_edit_final_save)
-    }
+    step = data.get('current_step', 0)
+    field_key = data.get('current_field')
 
     if response in ['да', 'д', 'yes', 'y']:
-        # Пользователь хочет изменить
-        if step in field_mapping:
-            field_key, prompt, next_state = field_mapping[step]
-            await state.update_data(edit_current_field=field_key)
-            await message.answer(prompt)
-            # Переходим в состояние для ввода значения
-            await state.set_state(next_state)
+        # Пользователь хочет изменить поле
+        await state.update_data(waiting_for_field_value=field_key)
+
+        # Определяем подсказку в зависимости от поля
+        prompts = {
+            'name': "Введите новое название товара:",
+            'description': "Введите новое описание (или 'нет' для удаления):",
+            'price': "Введите новую цену (например: 750/шт или 500/гр):",
+            'stock': f"Введите новое количество ({'грамм' if data.get('product_unit_type', 'grams') == 'grams' else 'штук'}):",
+            'unit_type': "Выберите единицы: 1 - граммы, 2 - штуки:",
+            'image': "Загрузите новое изображение или отправьте 'пропустить':",
+            'category': "Введите ID новой категории:"
+        }
+
+        prompt = prompts.get(field_key, f"Введите новое значение для {data.get('current_field_name')}:")
+        await message.answer(prompt)
+
+        # Устанавливаем специальное состояние для ввода значения
+        state_map = {
+            'name': AdminStates.waiting_edit_confirm_name,
+            'description': AdminStates.waiting_edit_confirm_description,
+            'price': AdminStates.waiting_edit_confirm_price,
+            'stock': AdminStates.waiting_edit_confirm_stock,
+            'unit_type': AdminStates.waiting_edit_confirm_unit_type,
+            'image': AdminStates.waiting_edit_confirm_image,
+            'category': AdminStates.waiting_edit_confirm_category
+        }
+
+        if field_key in state_map:
+            await state.set_state(state_map[field_key])
         else:
-            await message.answer("❌ Ошибка шага")
-            await state.clear()
+            # Общее состояние для других полей
+            await state.set_state(AdminStates.waiting_edit_field)
 
     elif response in ['нет', 'н', 'no', 'n']:
-        # Пользователь не хочет менять
+        # Пользователь не хочет менять это поле
         await state.update_data(edit_step=step + 1)
         await show_edit_step(message, state)
     else:
         await message.answer("❌ Ответьте 'да' или 'нет':")
 
-# Универсальный обработчик ввода значений
-@admin_router.message(AdminStates.waiting_edit_confirm_description)
-@admin_router.message(AdminStates.waiting_edit_confirm_price)
-@admin_router.message(AdminStates.waiting_edit_confirm_stock)
-@admin_router.message(AdminStates.waiting_edit_confirm_unit_type)
-@admin_router.message(AdminStates.waiting_edit_confirm_image)
-@admin_router.message(AdminStates.waiting_edit_confirm_category)
-@admin_router.message(AdminStates.waiting_edit_final_save)
-async def process_edit_field_input(message: Message, state: FSMContext):
-    """Обработка ввода нового значения для любого поля"""
-    data = await state.get_data()
-    step = data.get('edit_step', 0)
-
-    # Определяем поле на основе шага
-    field_mapping = {
-        0: "name",
-        1: "description",
-        2: "price",
-        3: "stock",
-        4: "unit_type",
-        5: "image",
-        6: "category"
-    }
-
-    field_key = field_mapping.get(step)
-
-    if not field_key:
-        await message.answer("❌ Ошибка: невозможно определить поле для редактирования")
-        await state.clear()
+@admin_router.message(AdminStates.waiting_edit_confirm_name)
+async def process_edit_name_value(message: Message, state: FSMContext):
+    """Обработка нового названия"""
+    new_value = message.text.strip()
+    if len(new_value) < 2:
+        await message.answer("❌ Название слишком короткое. Введите снова:")
         return
 
-    # Сохраняем изменение
-    new_value = message.text.strip()
+    data = await state.get_data()
     changes = data.get('edit_changes', {})
-
-    # Простая обработка в зависимости от поля
-    if field_key == "description":
-        if new_value.lower() == 'нет':
-            new_value = ''
-        changes[field_key] = new_value
-    elif field_key == "price":
-        # Обработка цены
-        try:
-            if '/шт' in new_value.lower():
-                price_text = new_value.lower().replace('/шт', '').strip()
-                changes['price'] = float(price_text)
-                changes['unit_type'] = 'pieces'
-                changes['measurement_step'] = 1
-            elif '/гр' in new_value.lower():
-                price_text = new_value.lower().replace('/гр', '').strip()
-                changes['price'] = float(price_text)
-                changes['unit_type'] = 'grams'
-                changes['measurement_step'] = 100
-            else:
-                # По умолчанию граммы
-                changes['price'] = float(new_value)
-                changes['unit_type'] = 'grams'
-                changes['measurement_step'] = 100
-        except ValueError:
-            await message.answer("❌ Неверный формат цены. Пример: 750/шт или 500/гр")
-            return
-    elif field_key == "stock":
-        try:
-            changes['stock_grams'] = int(new_value)
-        except ValueError:
-            await message.answer("❌ Введите целое число")
-            return
-    elif field_key == "unit_type":
-        if new_value == '1':
-            changes['unit_type'] = 'grams'
-            changes['measurement_step'] = 100
-        elif new_value == '2':
-            changes['unit_type'] = 'pieces'
-            changes['measurement_step'] = 1
-        else:
-            await message.answer("❌ Введите '1' или '2'")
-            return
-    elif field_key == "image":
-        # Для изображения просто сохраняем URL или текст
-        if new_value.lower() in ['пропустить', 'skip', 'без изображения']:
-            changes['image_url'] = None
-        else:
-            # Здесь должна быть логика загрузки изображения
-            # Пока просто сохраняем текст
-            changes['image_url'] = new_value
-    elif field_key == "category":
-        try:
-            changes['category_id'] = int(new_value)
-        except ValueError:
-            await message.answer("❌ Введите числовой ID категории")
-            return
-    else:
-        # Для названия просто сохраняем
-        changes[field_key] = new_value
-
-    await state.update_data(edit_changes=changes, edit_step=step + 1)
+    changes['name'] = new_value
+    await state.update_data(edit_changes=changes, edit_step=data.get('edit_step', 0) + 1)
     await show_edit_step(message, state)
-async def process_edit_price_response(message: Message, state: FSMContext):
-    await process_edit_step_response(message, state)
+
+@admin_router.message(AdminStates.waiting_edit_confirm_description)
+async def process_edit_description_value(message: Message, state: FSMContext):
+    """Обработка нового описания"""
+    new_value = message.text.strip()
+    if new_value.lower() == 'нет':
+        new_value = ''
+
+    data = await state.get_data()
+    changes = data.get('edit_changes', {})
+    changes['description'] = new_value
+    await state.update_data(edit_changes=changes, edit_step=data.get('edit_step', 0) + 1)
+    await show_edit_step(message, state)
+
+@admin_router.message(AdminStates.waiting_edit_confirm_price)
+async def process_edit_price_value(message: Message, state: FSMContext):
+    """Обработка новой цены"""
+    try:
+        text = message.text.strip().lower()
+
+        if '/шт' in text:
+            price_text = text.replace('/шт', '').strip()
+            changes = {'price': float(price_text), 'unit_type': 'pieces', 'measurement_step': 1}
+        elif '/гр' in text:
+            price_text = text.replace('/гр', '').strip()
+            changes = {'price': float(price_text), 'unit_type': 'grams', 'measurement_step': 100}
+        else:
+            # По умолчанию граммы
+            changes = {'price': float(text), 'unit_type': 'grams', 'measurement_step': 100}
+
+        data = await state.get_data()
+        existing_changes = data.get('edit_changes', {})
+        existing_changes.update(changes)
+        await state.update_data(edit_changes=existing_changes, edit_step=data.get('edit_step', 0) + 1)
+        await show_edit_step(message, state)
+
+    except ValueError:
+        await message.answer("❌ Неверный формат. Пример: 750/шт или 500/гр")
 
 @admin_router.message(AdminStates.waiting_edit_confirm_stock)
-async def process_edit_stock_response(message: Message, state: FSMContext):
-    await process_edit_step_response(message, state)
+async def process_edit_stock_value(message: Message, state: FSMContext):
+    """Обработка новых остатков"""
+    try:
+        new_value = int(message.text.strip())
+        if new_value < 0:
+            await message.answer("❌ Количество не может быть отрицательным. Введите снова:")
+            return
+
+        data = await state.get_data()
+        changes = data.get('edit_changes', {})
+        changes['stock_grams'] = new_value
+        await state.update_data(edit_changes=changes, edit_step=data.get('edit_step', 0) + 1)
+        await show_edit_step(message, state)
+
+    except ValueError:
+        await message.answer("❌ Введите целое число")
 
 @admin_router.message(AdminStates.waiting_edit_confirm_unit_type)
-async def process_edit_unit_response(message: Message, state: FSMContext):
-    await process_edit_step_response(message, state)
+async def process_edit_unit_type_value(message: Message, state: FSMContext):
+    """Обработка новых единиц измерения"""
+    text = message.text.strip()
+    if text == '1':
+        changes = {'unit_type': 'grams', 'measurement_step': 100}
+    elif text == '2':
+        changes = {'unit_type': 'pieces', 'measurement_step': 1}
+    else:
+        await message.answer("❌ Введите '1' или '2'")
+        return
+
+    data = await state.get_data()
+    existing_changes = data.get('edit_changes', {})
+    existing_changes.update(changes)
+    await state.update_data(edit_changes=existing_changes, edit_step=data.get('edit_step', 0) + 1)
+    await show_edit_step(message, state)
 
 @admin_router.message(AdminStates.waiting_edit_confirm_image)
-async def process_edit_image_response(message: Message, state: FSMContext):
-    await process_edit_step_response(message, state)
+async def process_edit_image_value(message: Message, state: FSMContext):
+    """Обработка нового изображения - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    # Проверяем что есть либо текст, либо фото
+    if message.text:
+        text = message.text.strip().lower()
+        if text in ['пропустить', 'skip', 'без изображения']:
+            new_value = None
+            await message.answer("✅ Изображение удалено")
+        else:
+            await message.answer("❌ Для пропуска отправьте 'пропустить', или загрузите изображение")
+            return
+    elif message.photo:
+        new_value = message.photo[-1].file_id
+        await message.answer("✅ Изображение получено")
+    else:
+        await message.answer("❌ Пожалуйста, загрузите изображение или отправьте 'пропустить'")
+        return
+
+    data = await state.get_data()
+    changes = data.get('edit_changes', {})
+    changes['image_url'] = new_value
+    await state.update_data(edit_changes=changes, edit_step=data.get('edit_step', 0) + 1)
+    await show_edit_step(message, state)
 
 @admin_router.message(AdminStates.waiting_edit_confirm_category)
-async def process_edit_category_response(message: Message, state: FSMContext):
-    await process_edit_step_response(message, state)
+async def process_edit_category_value(message: Message, state: FSMContext):
+    """Обработка новой категории"""
+    try:
+        new_value = int(message.text.strip())
+        data = await state.get_data()
+        changes = data.get('edit_changes', {})
+        changes['category_id'] = new_value
+        await state.update_data(edit_changes=changes, edit_step=data.get('edit_step', 0) + 1)
+        await show_edit_step(message, state)
 
-@admin_router.message(AdminStates.waiting_edit_final_save)
-async def process_edit_final_response(message: Message, state: FSMContext):
-    await process_edit_step_response(message, state)
+    except ValueError:
+        await message.answer("❌ Введите числовой ID категории")
 
 async def save_product_changes(callback_or_message, state: FSMContext):
     """Сохранение всех изменений товара"""
+    from aiogram.types import CallbackQuery, Message
 
     data = await state.get_data()
     product_id = data.get('edit_product_id')
@@ -1244,6 +1465,13 @@ async def save_product_changes(callback_or_message, state: FSMContext):
                 if hasattr(product, field):
                     setattr(product, field, value)
 
+            # Автоматически обновляем доступность при изменении остатков
+            if 'stock_grams' in changes:
+                if product.unit_type == 'grams':
+                    product.available = product.stock_grams >= 100
+                else:  # pieces
+                    product.available = product.stock_grams >= 1
+
             await session.commit()
 
             # Показываем результат
@@ -1270,6 +1498,7 @@ async def save_product_changes(callback_or_message, state: FSMContext):
 
 async def show_products_after_edit(callback_or_message, category_id: int):
     """Показать список товаров после редактирования"""
+    from keyboards import admin_product_management_keyboard
 
     async with get_session() as session:
         category = await session.get(Category, category_id)
@@ -1292,12 +1521,12 @@ async def show_products_after_edit(callback_or_message, category_id: int):
                 "price": p.price,
                 "stock_grams": p.stock_grams,
                 "available": p.available,
-                "unit_type": p.unit_type
+                "unit_type": p.unit_type,
+                "is_hypoallergenic": p.is_hypoallergenic  # ДОБАВЛЯЕМ ЭТУ СТРОЧКУ
             }
             for p in products
         ]
 
-        from keyboards import admin_product_management_keyboard
         message_text = f"🛒 Товары категории: {category.name}\n\nКоличество товаров: {len(products_list)}"
 
         if isinstance(callback_or_message, CallbackQuery):
@@ -1310,10 +1539,6 @@ async def show_products_after_edit(callback_or_message, category_id: int):
                 message_text,
                 reply_markup=admin_product_management_keyboard(products_list, category_id)
             )
-@admin_router.callback_query(F.data.startswith("admin_delete_product:"))
-# Полное пошаговое редактирование товара
-
-# ========== ПОЛНОЕ ПОШАГОВОЕ РЕДАКТИРОВАНИЕ ТОВАРА ==========
 
 # ========== ФУНКЦИЯ СТАТИСТИКИ ==========
 @admin_router.callback_query(F.data == "admin_statistics")
@@ -1379,7 +1604,6 @@ async def admin_statistics_handler(callback: CallbackQuery):
         await callback.answer("📊 Статистика обновлена")
 
 @admin_router.callback_query(F.data == "admin_back")
-@admin_router.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery):
     """Назад в главное меню админки"""
     if not await is_admin(callback.from_user.id):
@@ -1391,3 +1615,111 @@ async def admin_back(callback: CallbackQuery):
         reply_markup=admin_main_keyboard()
     )
     await callback.answer()
+
+# Обработчик удаления товара (оставляю один в конце файла)
+@admin_router.callback_query(F.data.startswith("admin_delete_product:"))
+async def admin_delete_product_handler(callback: CallbackQuery):
+    """ПРОСТЕЙШИЙ обработчик удаления - ТОЛЬКО ДЛЯ ТЕСТА"""
+    # 1. СРАЗУ показываем что обработчик вызвался
+    await callback.answer("🚨 Обработчик ВЫЗВАН!", show_alert=True)
+
+    # 2. Разбираем данные
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("❌ Ошибка формата данных", show_alert=True)
+        return
+
+    product_id = int(parts[1])
+    category_id = int(parts[2])
+
+    # 3. ПРОСТОЕ удаление из БД
+    async with get_session() as session:
+        product = await session.get(Product, product_id)
+        if not product:
+            await callback.answer("❌ Товар не найден в БД", show_alert=True)
+            return
+
+        product_name = product.name
+
+        # УДАЛЕНИЕ
+        await session.delete(product)
+        await session.commit()
+
+    # 4. Результат
+    await callback.answer(f"✅ УДАЛЕНО из БД: {product_name}", show_alert=True)
+
+    # 5. Простое сообщение
+    await callback.message.answer(f"🗑️ Товар '{product_name}' удален из базы данных")
+
+    # 6. Возвращаем к списку товаров
+    await show_products_after_edit(callback, category_id)
+
+# Эту функцию добавить ПОСЛЕ всех существующих функций в admin.py
+# Например, после функции process_edit_field
+
+@admin_router.callback_query(F.data.startswith("admin_refresh_catalog:"))
+async def admin_refresh_catalog_handler(callback: CallbackQuery):
+    """Принудительное обновление каталога для категории - НОВАЯ ФУНКЦИЯ"""
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ Нет доступа", show_alert=True)
+        return
+
+    category_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        # Обновляем все товары категории по логике hide_when_zero
+        stmt = select(Product).where(Product.category_id == category_id)
+        result = await session.execute(stmt)
+        products = result.scalars().all()
+
+        updated_count = 0
+        for product in products:
+            old_status = product.available
+
+            # Применяем логику hide_when_zero
+            if product.unit_type == 'grams':
+                # Для весового: доступен если >= 100г
+                product.available = product.stock_grams >= 100
+            else:  # pieces
+                # Для штучного: доступен если >= 1шт
+                product.available = product.stock_grams >= 1
+
+            if old_status != product.available:
+                updated_count += 1
+                logger.info(f"Товар {product.name} обновлен: {old_status} -> {product.available}")
+
+        if updated_count > 0:
+            await session.commit()
+
+        # Возвращаем обновленный список
+        category = await session.get(Category, category_id)
+        products_list = [
+            {
+                "id": p.id,
+                "name": p.name,
+                "price": p.price,
+                "stock_grams": p.stock_grams,
+                "available": p.available,
+                "unit_type": p.unit_type
+            }
+            for p in products
+        ]
+
+        try:
+            await callback.message.edit_text(
+                f"🛒 Товары категории: {category.name}\n\n"
+                f"Количество товаров: {len(products_list)}\n"
+                f"🔄 Обновлено статусов: {updated_count}",
+                reply_markup=admin_product_management_keyboard(products_list, category_id)
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отредактировать сообщение: {e}")
+            # Отправляем новое сообщение
+            await callback.message.answer(
+                f"🛒 Товары категории: {category.name}\n\n"
+                f"Количество товаров: {len(products_list)}\n"
+                f"🔄 Обновлено статусов: {updated_count}",
+                reply_markup=admin_product_management_keyboard(products_list, category_id)
+            )
+
+        await callback.answer(f"✅ Каталог обновлен. Изменено: {updated_count} товаров")
