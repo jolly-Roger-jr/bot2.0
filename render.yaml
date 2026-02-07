@@ -1,0 +1,17 @@
+services:
+  - type: worker
+    name: barkery-shop
+    env: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: python barkery_bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./barkery.db
+      - key: TIMEZONE
+        value: Europe/Belgrade
