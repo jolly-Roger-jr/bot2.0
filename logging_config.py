@@ -216,7 +216,7 @@ class PerformanceMonitor:
         op_stats["max_time"] = max(op_stats["max_time"], duration)
         op_stats["min_time"] = min(op_stats["min_time"], duration)
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Получить статистику производительности"""
         stats = {}
 
