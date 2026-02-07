@@ -1,0 +1,17 @@
+# Основные зависимости
+aiogram==3.10.0
+SQLAlchemy==2.0.25
+aiosqlite==0.20.0
+python-dotenv==1.0.0
+pytz==2023.3.post1
+
+# Мониторинг и логирование
+structlog==23.2.0
+python-json-logger==2.0.7
+
+# Утилиты
+python-dateutil==2.8.2
+typing-extensions==4.8.0
+
+# Безопасность
+cryptography==41.0.7
