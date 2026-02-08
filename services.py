@@ -484,3 +484,30 @@ async def update_product_stock_and_availability(product_id: int, quantity_sold: 
 cart_service = CartService()
 catalog_service = CatalogService()
 user_service = UserService()
+
+
+async def get_cart_items(telegram_id: int):
+    """Получить товары корзины пользователя"""
+    # Импорты внутри функции чтобы избежать циклических зависимостей
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from database import get_session, User, CartItem
+
+    async for session in get_session():
+        # Найти пользователя по telegram_id
+        result = await session.execute(
+            select(User).where(User.telegram_id == str(telegram_id))
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return []
+
+        # Получить все товары в корзине
+        result = await session.execute(
+            select(CartItem)
+            .options(selectinload(CartItem.product))
+            .where(CartItem.user_id == user.id)
+        )
+
+        return result.scalars().all()

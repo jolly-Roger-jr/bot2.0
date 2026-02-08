@@ -1,5 +1,0 @@
-# Основные зависимости
-aiogram==3.10.0
-SQLAlchemy==2.0.25
-aiosqlite==0.20.0
-python-dotenv==1.0.0
