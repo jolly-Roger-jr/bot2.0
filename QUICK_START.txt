@@ -1,0 +1,34 @@
+🚀 КРАТКИЙ ГАЙД ПО ДЕПЛОЮ НА PYTHONANYWHERE
+
+1. 📁 ЗАГРУЗИТЕ ФАЙЛЫ:
+   - Все .py файлы
+   - requirements.txt
+   - Создайте .env (на основе .env.example)
+
+2. ⚙️ .env ДЛЯ PYTHONANYWHERE:
+   BOT_TOKEN=ваш_токен
+   ADMIN_ID=161165462
+   DATABASE_URL=sqlite+aiosqlite:////home/ВАШ_USERNAME/barkery_bot/barkery.db
+   WEBHOOK_HOST=ВАШ_USERNAME.pythonanywhere.com
+   WEBHOOK_PATH=/webhook
+
+3. 🖥️ НАСТРОЙТЕ ВЕБ-ПРИЛОЖЕНИЕ:
+   - Manual configuration
+   - Python 3.10+
+   - WSGI: /home/ВАШ_USERNAME/barkery_bot/wsgi.py
+   - Укажите virtualenv
+   - Нажмите Reload
+
+4. 🔧 ВЫПОЛНИТЕ В КОНСОЛИ:
+   pip install -r requirements.txt
+   python3 -c "from database import init_db; import asyncio; asyncio.run(init_db())"
+
+5. ✅ ПРОВЕРЬТЕ:
+   - Отправьте /start боту
+   - Проверьте логи на PythonAnywhere
+   - Проверьте админку /admin
+
+📞 ПРИ ПРОБЛЕМАХ:
+- Читайте DEPLOY_FINAL_GUIDE.md
+- Проверьте логи ошибок
+- Убедитесь что .env настроен правильно

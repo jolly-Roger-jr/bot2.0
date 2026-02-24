@@ -9,6 +9,18 @@ class Settings:
     admin_id = int(os.getenv("ADMIN_ID", "0"))
     database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./barkery.db")
     timezone = os.getenv("TIMEZONE", "Europe/Belgrade")
+    
+    # Настройки webhook для PythonAnywhere
+    webhook_host = os.getenv("WEBHOOK_HOST", "")  # Будет установлен на PythonAnywhere
+    webhook_path = os.getenv("WEBHOOK_PATH", "/webhook")
+    webhook_port = int(os.getenv("WEBHOOK_PORT", "8080"))
+    
+    @property
+    def webhook_url(self):
+        """Полный URL для webhook"""
+        if self.webhook_host:
+            return f"https://{self.webhook_host}"
+        return ""
 
     # Проверка обязательных полей
     @classmethod
