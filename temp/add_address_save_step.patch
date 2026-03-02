@@ -1,0 +1,99 @@
+--- handlers.py.original	2025-02-25 12:00:00
++++ handlers.py.modified	2025-02-25 12:00:00
+@@ -X,XX +X,XX @@
+ 
+ class OrderForm(StatesGroup):
+     waiting_pet_name = State()
+     waiting_address = State()
+     waiting_telegram_login = State()  # Только если нет telegram_username
+     waiting_address_change = State()  # Для проверки изменения адреса
++    waiting_save_address = State()    # Новый шаг: спросить сохранить ли адрес
+ 
+ # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+ 
+@@ -XXX,XX +XXX,XX @@
+     await state.update_data(address=address)
+ 
+-    # Переходим к проверке telegram login
+-    await check_telegram_login_clean(message, state)
++    # Новый шаг: спрашиваем, сохранить ли адрес
++    await state.set_state(OrderForm.waiting_save_address)
++    save_text = (
++        "✅ Адрес принят!\n\n"
++        f"📍 {address}\n\n"
++        "Хотите сохранить этот адрес для будущих заказов?\n"
++        "(да/нет)"
++    )
++    await clean_ui.safe_edit_or_send_message(message, save_text, None)
+ 
+ @router.message(OrderForm.waiting_address_change)
+@@ -XXX,XX +XXX,XX @@
+         await state.update_data(address=address)
+ 
+-        # Переходим к проверке telegram login
+-        await check_telegram_login_clean(message, state)
++        # Новый шаг: спрашиваем, сохранить ли адрес
++        await state.set_state(OrderForm.waiting_save_address)
++        save_text = (
++            "✅ Адрес принят!\n\n"
++            f"📍 {address}\n\n"
++            "Хотите сохранить этот адрес для будущих заказов?\n"
++            "(да/нет)"
++        )
++        await clean_ui.safe_edit_or_send_message(message, save_text, None)
+ 
+     elif response in ['нет', 'н', 'no', 'n']:
+@@ -XXX,XX +XXX,XX @@
+         await state.update_data(address=address)
+ 
+-        # Переходим к проверке telegram login
+-        await check_telegram_login_clean(message, state)
++        # Новый шаг: спрашиваем, сохранить ли адрес
++        await state.set_state(OrderForm.waiting_save_address)
++        save_text = (
++            "✅ Адрес принят!\n\n"
++            f"📍 {address}\n\n"
++            "Хотите сохранить этот адрес для будущих заказов?\n"
++            "(да/нет)"
++        )
++        await clean_ui.safe_edit_or_send_message(message, save_text, None)
+ 
+ @router.message(OrderForm.waiting_address)
+@@ -XXX,XX +XXX,XX @@
+     await state.update_data(address=address)
+ 
+-    # Переходим к проверке telegram login
+-    await check_telegram_login_clean(message, state)
++    # Новый шаг: спрашиваем, сохранить ли адрес
++    await state.set_state(OrderForm.waiting_save_address)
++    save_text = (
++        "✅ Адрес принят!\n\n"
++        f"📍 {address}\n\n"
++        "Хотите сохранить этот адрес для будущих заказов?\n"
++        "(да/нет)"
++    )
++    await clean_ui.safe_edit_or_send_message(message, save_text, None)
+ 
++@router.message(OrderForm.waiting_save_address)
++async def process_save_address(message: Message, state: FSMContext):
++    """Обработка ответа о сохранении адреса"""
++    response = message.text.strip().lower()
++    data = await state.get_data()
++    
++    # Список утвердительных ответов
++    yes_responses = ['да', 'д', 'da', 'yes', 'y']
++    
++    if response in yes_responses:
++        # Сохраняем адрес в БД
++        user_id = data.get('user_id')
++        address = data.get('address')
++        
++        if user_id and address:
++            await user_service.update_user_info(user_id, address=address)
++            await message.answer("✅ Адрес сохранен в профиле!")
++    
++    # Переходим к проверке telegram login (в любом случае)
++    await check_telegram_login_clean(message, state)
++
+ @router.message(OrderForm.waiting_telegram_login)
+ async def process_telegram_login(message: Message, state: FSMContext):

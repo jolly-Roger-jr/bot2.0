@@ -365,3 +365,16 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
 
     return builder.as_markup()
 
+
+# ========== НОВАЯ КЛАВИАТУРА ДЛЯ ВЫБОРА АДРЕСА ==========
+
+def address_choice_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора адреса: Да / Нет"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.row(
+        InlineKeyboardButton(text="✅ Да", callback_data="address_yes"),
+        InlineKeyboardButton(text="❌ Нет", callback_data="address_no")
+    )
+    
+    return builder.as_markup()

@@ -400,18 +400,21 @@ class UserService:
                 }
             }
     
-    async def update_user_info(self, user_id: int, pet_name: str = None, telegram_login: str = None) -> Dict:
-        """Обновить информацию о пользователе - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    async def update_user_info(self, user_id: int, pet_name: str = None, telegram_login: str = None, address: str = None) -> Dict:
+        """Обновить информацию о пользователе"""
         async with get_session() as session:
             user = await session.get(User, user_id)
             if not user:
                 return {"success": False, "error": "Пользователь не найден"}
             
             if pet_name:
-                user.pet_name = pet_name  # ИСПРАВЛЕНО: было full_name, стало pet_name
+                user.pet_name = pet_name
             
             if telegram_login:
-                user.telegram_username = telegram_login  # ИСПРАВЛЕНО: было username, стало telegram_username
+                user.telegram_username = telegram_login
+            
+            if address:
+                user.address = address
             
             await session.commit()
             return {"success": True, "user": user}

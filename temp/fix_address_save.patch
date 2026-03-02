@@ -1,0 +1,46 @@
+--- handlers.py	2026-02-25 18:30:00
++++ handlers.py.fixed	2026-02-25 18:30:00
+@@ -732,6 +732,9 @@
+ 
+         await state.update_data(address=address)
+ 
++        # Это старый адрес, не спрашиваем о сохранении
++        await check_telegram_login_clean(message, state)
++
+         # Новый шаг: спрашиваем, сохранить ли адрес
+         await state.set_state(OrderForm.waiting_save_address)
+         save_text = (
+@@ -772,6 +775,16 @@
+ 
+         await state.update_data(address=address)
+ 
++        # Проверяем, есть ли уже адрес в БД
++        user_id = data.get("user_id")
++        user_info = await user_service.get_user_info(user_id)
++        existing_address = user_info.get('address') if user_info else None
++        
++        if not existing_address:
++            # Первый заказ - сохраняем адрес автоматически
++            await user_service.update_user_info(user_id, address=address)
++            await check_telegram_login_clean(message, state)
++        else:
+             # Новый шаг: спрашиваем, сохранить ли адрес
+             await state.set_state(OrderForm.waiting_save_address)
+             save_text = (
+@@ -791,6 +804,16 @@
+ 
+     await state.update_data(address=address)
+ 
++    # Проверяем, есть ли уже адрес в БД
++    user_id = data.get("user_id")
++    user_info = await user_service.get_user_info(user_id)
++    existing_address = user_info.get('address') if user_info else None
++    
++    if not existing_address:
++        # Первый заказ - сохраняем адрес автоматически
++        await user_service.update_user_info(user_id, address=address)
++        await check_telegram_login_clean(message, state)
++    else:
+         # Новый шаг: спрашиваем, сохранить ли адрес
+         await state.set_state(OrderForm.waiting_save_address)
+         save_text = (

@@ -1,10 +1,10 @@
 """
 Barkery Bot - handlers.py
-ПОЛНАЯ ВЕРСИЯ С ЧИСТЫМ ИНТЕРФЕЙСОМ И КНОПКАМИ ДЛЯ АДРЕСА
+ПОЛНАЯ ВЕРСИЯ С ЧИСТЫМ ИНТЕРФЕЙСОМ И СОХРАНЕНИЕМ АДРЕСА
 """
 import logging
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -16,9 +16,7 @@ from keyboards import (
     categories_keyboard,
     products_keyboard,
     product_card_keyboard,
-    cart_keyboard,
-    order_confirmation_keyboard,
-    address_choice_keyboard  # Импортируем новую клавиатуру
+    cart_keyboard
 )
 from services import cart_service, catalog_service, user_service, update_product_stock_and_availability
 from admin import check_and_notify_out_of_stock
@@ -40,6 +38,7 @@ class OrderForm(StatesGroup):
     waiting_telegram_login = State()  # Только если нет telegram_username
     waiting_address_change = State()  # Для проверки изменения адреса
     waiting_save_address = State()    # Новый шаг: спросить сохранить ли адрес
+
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
 def get_temp_quantity_key(user_id: int, product_id: int) -> str:
@@ -569,11 +568,11 @@ async def clear_cart(callback: CallbackQuery):
         logger.error(f"Ошибка очистки корзины: {e}")
         await callback.answer("❌ Ошибка очистки", show_alert=True)
 
-# ========== ОБРАБОТКА ЗАКАЗА (НОВАЯ ВЕРСИЯ С КНОПКАМИ ДЛЯ АДРЕСА) ==========
+# ========== ОБРАБОТКА ЗАКАЗА (ОБНОВЛЕННАЯ ВЕРСИЯ) ==========
 
 @router.callback_query(F.data == "order_create")
 async def start_order(callback: CallbackQuery, state: FSMContext):
-    """Начать оформление заказа - НОВАЯ ВЕРСИЯ"""
+    """Начать оформление заказа - ОБНОВЛЕННАЯ ВЕРСИЯ"""
     try:
         user = await cart_service.get_or_create_user(callback.from_user.id)
         cart_data = await cart_service.get_cart(user.id)
@@ -632,7 +631,7 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
 
 
 async def check_address_step_clean(callback: CallbackQuery, state: FSMContext, pet_name: str, user_info: dict):
-    """Переход к шагу адреса доставки - с clean_ui и inline-кнопками"""
+    """Переход к шагу адреса доставки - с clean_ui"""
     # Проверяем есть ли у пользователя старый адрес
     old_address = user_info.get('address') if user_info else None
 
@@ -641,16 +640,10 @@ async def check_address_step_clean(callback: CallbackQuery, state: FSMContext, p
             f"✅ Имя питомца: {pet_name}\n\n"
             f"📍 Адрес доставки\n\n"
             f"Предыдущий адрес:\n{old_address}\n\n"
-            "Использовать этот адрес?"
+            "Использовать этот адрес? (да/нет)\n"
+            "Или введите новый адрес доставки:"
         )
         await state.set_state(OrderForm.waiting_address_change)
-
-        # ИСПРАВЛЕНО: Используем клавиатуру с кнопками
-        await clean_ui.safe_edit_or_send(
-            callback=callback,
-            text=address_text,
-            keyboard=address_choice_keyboard()  # Новая клавиатура
-        )
     else:
         address_text = (
             f"✅ Имя питомца: {pet_name}\n\n"
@@ -660,12 +653,12 @@ async def check_address_step_clean(callback: CallbackQuery, state: FSMContext, p
         )
         await state.set_state(OrderForm.waiting_address)
 
-        # Используем clean_ui вместо прямого ответа
-        await clean_ui.safe_edit_or_send(
-            callback=callback,
-            text=address_text,
-            keyboard=None
-        )
+    # Используем clean_ui вместо прямого ответа
+    await clean_ui.safe_edit_or_send(
+        callback=callback,
+        text=address_text,
+        keyboard=None
+    )
 
 @router.message(OrderForm.waiting_pet_name)
 async def process_pet_name(message: Message, state: FSMContext):
@@ -704,7 +697,7 @@ async def process_pet_name(message: Message, state: FSMContext):
 
 
 async def check_address_message_clean(message: Message, state: FSMContext, pet_name: str, user_info: dict):
-    """Отправляем сообщение с проверкой адреса - с clean_ui и inline-кнопками"""
+    """Отправляем сообщение с проверкой адреса - с clean_ui"""
     # Проверяем есть ли у пользователя старый адрес
     old_address = user_info.get('address') if user_info else None
 
@@ -713,16 +706,10 @@ async def check_address_message_clean(message: Message, state: FSMContext, pet_n
             f"✅ Имя питомца принято: {pet_name}\n\n"
             f"📍 Адрес доставки\n\n"
             f"Предыдущий адрес:\n{old_address}\n\n"
-            "Использовать этот адрес?"
+            "Использовать этот адрес? (да/нет)\n"
+            "Или введите новый адрес доставки:"
         )
         await state.set_state(OrderForm.waiting_address_change)
-
-        # ИСПРАВЛЕНО: используем clean_ui для Message и клавиатуру с кнопками
-        await clean_ui.safe_edit_or_send_message(
-            message=message,
-            text=address_text,
-            keyboard=address_choice_keyboard()  # Новая клавиатура
-        )
     else:
         address_text = (
             f"✅ Имя питомца принято: {pet_name}\n\n"
@@ -732,241 +719,134 @@ async def check_address_message_clean(message: Message, state: FSMContext, pet_n
         )
         await state.set_state(OrderForm.waiting_address)
 
-        # ИСПРАВЛЕНО: используем clean_ui для Message
-        await clean_ui.safe_edit_or_send_message(message, address_text, None)
+    # ИСПРАВЛЕНО: используем clean_ui для Message
+    # Нужно сначала проверить есть ли предыдущее сообщение от бота
+    await clean_ui.safe_edit_or_send_message(message, address_text, None)
 
-
-# ========== ИСПРАВЛЕННЫЕ ОБРАБОТЧИКИ ДЛЯ КНОПОК ВЫБОРА АДРЕСА ==========
-
-@router.callback_query(F.data == "address_yes")
-async def process_address_yes(callback: CallbackQuery, state: FSMContext):
-    """Обработчик кнопки 'Да' при выборе адреса"""
-    await callback.answer()
-
-    data = await state.get_data()
-    user_info = data.get('user_info', {})
-    old_address = user_info.get('address', '')
-
-    if not old_address:
-        await callback.message.edit_text("❌ Старый адрес не найден. Введите адрес доставки:")
-        await state.set_state(OrderForm.waiting_address)
-        return
-
-    await state.update_data(address=old_address)
-
-    # Переходим к проверке telegram login
-    await check_telegram_login_clean_callback(callback, state)
-
-
-@router.callback_query(F.data == "address_no")
-async def process_address_no(callback: CallbackQuery, state: FSMContext):
-    """Обработчик кнопки 'Нет' при выборе адреса"""
-    await callback.answer()
-
-    # Запрашиваем новый адрес - редактируем текущее сообщение
-    await callback.message.edit_text(
-        "Введите новый адрес доставки:\n"
-        "Улица, дом, квартира, город\n\n"
-        "Пример: ул. Кнез Михаилова 15, кв. 23, Белград"
-    )
-    await state.set_state(OrderForm.waiting_address)
-
-
-async def check_telegram_login_clean_callback(callback: CallbackQuery, state: FSMContext):
-    """Проверка наличия telegram логина для callback"""
+@router.message(OrderForm.waiting_address_change)
+async def process_address_change(message: Message, state: FSMContext):
+    """Обработка изменения адреса"""
+    response = message.text.strip().lower()
     data = await state.get_data()
     user_info = data.get('user_info', {})
 
-    # Проверяем есть ли у пользователя telegram_username
-    telegram_username = user_info.get('telegram_username')
+    if response in ['да', 'д', 'yes', 'y', '+']:
+        # Используем старый адрес
+        address = user_info.get('address', '')
+        if not address:
+            # ИСПРАВЛЕНО: используем clean_ui
+            await clean_ui.safe_edit_or_send_message(
+                message=message,
+                text="❌ Старый адрес не найден. Введите адрес доставки:",
+                keyboard=None
+            )
+            await state.set_state(OrderForm.waiting_address)
+            return
 
-    if telegram_username:
-        # У пользователя уже есть логин, пропускаем этот шаг
-        await state.update_data(telegram_login=telegram_username)
+        await state.update_data(address=address)
 
-        # Переходим к подтверждению заказа
-        await show_order_confirmation_clean_callback(callback, state)
-    else:
-        # Запрашиваем telegram login
-        await state.set_state(OrderForm.waiting_telegram_login)
-
-        telegram_text = (
-            "📱Введите ваш Telegram login (без @):\n"
-            "Например: ivanov_ivan"
-        )
-
-        await callback.message.edit_text(telegram_text)
-
-
-async def show_order_confirmation_clean_callback(callback: CallbackQuery, state: FSMContext):
-    """Показать подтверждение заказа для callback"""
-    data = await state.get_data()
-
-    # Формируем подтверждение
-    items_text = "\n".join([
-        f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
-        for item in data["cart_items"]
-    ])
-
-    confirmation_text = (
-        "✅ Подтверждение заказа\n\n"
-        f"🐕 Питомец: {data['pet_name']}\n"
-        f"📱 Telegram: @{data['telegram_login']}\n"
-        f"📍 Адрес доставки: {data['address']}\n\n"
-        f"📋 Состав заказа:\n{items_text}\n\n"
-        f"💰 Итого к оплате: {data['total_amount']:.0f} RSD\n\n"
-        "Подтвердите заказ:"
-    )
-
-    from keyboards import order_confirmation_keyboard
-    await callback.message.edit_text(
-        text=confirmation_text,
-        reply_markup=order_confirmation_keyboard()
-    )
-
-
-async def check_telegram_login_clean(message: Message, state: FSMContext):
-    """Проверка наличия telegram логина - с clean_ui"""
-    data = await state.get_data()
-    user_info = data.get('user_info', {})
-
-    # Проверяем есть ли у пользователя telegram_username
-    telegram_username = user_info.get('telegram_username')
-
-    if telegram_username:
-        # У пользователя уже есть логин, пропускаем этот шаг
-        await state.update_data(telegram_login=telegram_username)
-
-        # Переходим к подтверждению заказа
-        await show_order_confirmation_clean(message, state)
-    else:
-        # Запрашиваем telegram login
-        await state.set_state(OrderForm.waiting_telegram_login)
-
-        telegram_text = (
-            "📱Введите ваш Telegram login (без @):\n"
-            "Например: ivanov_ivan"
-        )
-
-        await clean_ui.safe_edit_or_send_message(
-            message=message,
-            text=telegram_text,
-            keyboard=None
-        )
-
-
-async def show_order_confirmation_clean(message: Message, state: FSMContext):
-    """Показать подтверждение заказа - с clean_ui"""
-    data = await state.get_data()
-
-    # Формируем подтверждение
-    items_text = "\n".join([
-        f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
-        for item in data["cart_items"]
-    ])
-
-    confirmation_text = (
-        "✅ Подтверждение заказа\n\n"
-        f"🐕 Питомец: {data['pet_name']}\n"
-        f"📱 Telegram: @{data['telegram_login']}\n"
-        f"📍 Адрес доставки: {data['address']}\n\n"
-        f"📋 Состав заказа:\n{items_text}\n\n"
-        f"💰 Итого к оплате: {data['total_amount']:.0f} RSD\n\n"
-        "Подтвердите заказ:"
-    )
-
-    from keyboards import order_confirmation_keyboard
-    await clean_ui.safe_edit_or_send_message(
-        message=message,
-        text=confirmation_text,
-        keyboard=order_confirmation_keyboard()
-    )
-
-
-# ========== НЕДОСТАЮЩИЕ ОБРАБОТЧИКИ СООБЩЕНИЙ ==========
-
-@router.message(OrderForm.waiting_address)
-async def process_address(message: Message, state: FSMContext):
-    """Обработка нового адреса доставки"""
-    address = message.text.strip()
-
-    logger.info(f"📝 Получен новый адрес: {address}")
-
-    if len(address) < 10:
-        await message.answer("❌ Адрес слишком короткий. Введите полный адрес (минимум 10 символов):")
-        return
-
-    await state.update_data(address=address)
-
-    # Проверяем, есть ли уже адрес в БД
-    data = await state.get_data()
-    user_id = data.get("user_id")
-    user_info = await user_service.get_user_info(user_id)
-    existing_address = user_info.get('address') if user_info else None
-
-    if not existing_address:
-        # Первый заказ - сохраняем адрес автоматически
-        await user_service.update_user_info(user_id, address=address)
-        await message.answer("✅ Адрес сохранен в профиле!")
-        await check_telegram_login_clean(message, state)
-    else:
-        # Новый адрес - спрашиваем, сохранить ли (с кнопками)
+        # Новый шаг: спрашиваем, сохранить ли адрес
         await state.set_state(OrderForm.waiting_save_address)
         save_text = (
             "✅ Адрес принят!\n\n"
             f"📍 {address}\n\n"
-            "Хотите сохранить этот адрес для будущих заказов?"
+            "Хотите сохранить этот адрес для будущих заказов?\n"
+            "(да/нет)"
         )
+        await clean_ui.safe_edit_or_send_message(message, save_text, None)
 
-        # Создаем клавиатуру для сохранения адреса
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="✅ Да, сохранить", callback_data="save_address_yes"),
-            InlineKeyboardButton(text="❌ Нет, не сохранять", callback_data="save_address_no")
+    elif response in ['нет', 'н', 'no', 'n']:
+        # Запрашиваем новый адрес
+        await clean_ui.safe_edit_or_send_message(
+            message=message,
+            text=(
+                "Введите новый адрес доставки:\n"
+                "Улица, дом, квартира, город\n\n"
+                "Пример: ул. Кнез Михаилова 15, кв. 23, Белград"
+            ),
+            keyboard=None
         )
+        await state.set_state(OrderForm.waiting_address)
+    else:
+        # Пользователь ввел новый адрес напрямую
+        address = message.text.strip()
+        if len(address) < 10:
+            await clean_ui.safe_edit_or_send_message(
+                message=message,
+                text="❌ Адрес слишком короткий. Введите полный адрес:",
+                keyboard=None
+            )
+            return
 
-        await message.answer(save_text, reply_markup=builder.as_markup())
+        await state.update_data(address=address)
 
+        # Новый шаг: спрашиваем, сохранить ли адрес
+        await state.set_state(OrderForm.waiting_save_address)
+        save_text = (
+            "✅ Адрес принят!\n\n"
+            f"📍 {address}\n\n"
+            "Хотите сохранить этот адрес для будущих заказов?\n"
+            "(да/нет)"
+        )
+        await clean_ui.safe_edit_or_send_message(message, save_text, None)
 
-# ========== ОБРАБОТЧИКИ ДЛЯ КНОПОК СОХРАНЕНИЯ АДРЕСА ==========
+@router.message(OrderForm.waiting_address)
+async def process_address(message: Message, state: FSMContext):
+    """Обработка адреса доставки"""
+    address = message.text.strip()
 
-@router.callback_query(F.data == "save_address_yes")
-async def process_save_address_yes(callback: CallbackQuery, state: FSMContext):
-    """Обработчик кнопки 'Да' при сохранении адреса"""
-    await callback.answer()
+    if len(address) < 10:
+        await clean_ui.safe_edit_or_send_message(
+            message=message,
+            text="❌ Адрес слишком короткий. Введите полный адрес:",
+            keyboard=None
+        )
+        return
 
+    await state.update_data(address=address)
+
+    # Новый шаг: спрашиваем, сохранить ли адрес
+    await state.set_state(OrderForm.waiting_save_address)
+    save_text = (
+        "✅ Адрес принят!\n\n"
+        f"📍 {address}\n\n"
+        "Хотите сохранить этот адрес для будущих заказов?\n"
+        "(да/нет)"
+    )
+    await clean_ui.safe_edit_or_send_message(message, save_text, None)
+
+@router.message(OrderForm.waiting_save_address)
+async def process_save_address(message: Message, state: FSMContext):
+    """Обработка ответа о сохранении адреса"""
+    response = message.text.strip().lower()
     data = await state.get_data()
-    user_id = data.get("user_id")
-    address = data.get("address")
-
-    if user_id and address:
-        await user_service.update_user_info(user_id, address=address)
-        await callback.message.edit_text("✅ Адрес сохранен в профиле!")
-
-    await check_telegram_login_clean_callback(callback, state)
-
-
-@router.callback_query(F.data == "save_address_no")
-async def process_save_address_no(callback: CallbackQuery, state: FSMContext):
-    """Обработчик кнопки 'Нет' при сохранении адреса"""
-    await callback.answer()
-
-    await callback.message.edit_text("➡️ Адрес не сохранен")
-    await check_telegram_login_clean_callback(callback, state)
-
+    
+    # Список утвердительных ответов
+    yes_responses = ['да', 'д', 'da', 'yes', 'y']
+    
+    if response in yes_responses:
+        # Сохраняем адрес в БД
+        user_id = data.get('user_id')
+        address = data.get('address')
+        
+        if user_id and address:
+            await user_service.update_user_info(user_id, address=address)
+            await message.answer("✅ Адрес сохранен в профиле!")
+    
+    # Переходим к проверке telegram login (в любом случае)
+    await check_telegram_login_clean(message, state)
 
 @router.message(OrderForm.waiting_telegram_login)
 async def process_telegram_login(message: Message, state: FSMContext):
     """Обработка Telegram логина"""
     telegram_login = message.text.strip().replace("@", "")
 
-    logger.info(f"📱 Получен Telegram login: {telegram_login}")
-
     if len(telegram_login) < 3:
-        await message.answer("❌ Слишком короткий login. Введите Telegram login (минимум 3 символа):")
+        await clean_ui.safe_edit_or_send_message(
+            message=message,
+            text="❌ Слишком короткий login. Введите Telegram login:",
+            keyboard=None
+        )
         return
 
     await state.update_data(telegram_login=telegram_login)
@@ -974,9 +854,11 @@ async def process_telegram_login(message: Message, state: FSMContext):
     # Переходим к подтверждению заказа
     await show_order_confirmation_clean(message, state)
 
-# ========== ОБРАБОТЧИК ПОДТВЕРЖДЕНИЯ ЗАКАЗА ==========
+# ========== ФУНКЦИЯ CONFIRM_ORDER - ИСПРАВЛЕННАЯ ==========
 
-    """Подтверждение и создание заказа"""
+@router.callback_query(F.data == "order_confirm")
+async def confirm_order(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение и создание заказа - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         data = await state.get_data()
 
@@ -1005,7 +887,7 @@ async def process_telegram_login(message: Message, state: FSMContext):
         # Обновляем информацию о пользователе в БД
         user_update_data = {
             "pet_name": data.get("pet_name"),
-            "telegram_login": data.get("telegram_login")
+            "telegram_login": data.get("telegram_login")  # ИСПРАВЛЕНО: метод update_user_info ожидает это поле
         }
 
         # Очищаем None значения
@@ -1104,157 +986,6 @@ async def process_telegram_login(message: Message, state: FSMContext):
         logger.error(f"Ошибка подтверждения заказа: {e}")
         await callback.answer("❌ Ошибка создания заказа", show_alert=True)
 
-        # ========== ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ПОДТВЕРЖДЕНИЯ ЗАКАЗА ==========
-
-@router.callback_query(F.data == "order_confirm")
-async def confirm_order(callback: CallbackQuery, state: FSMContext):
-    """Подтверждение и создание заказа"""
-    try:
-        data = await state.get_data()
-        
-        if not data:
-            await callback.answer("❌ Данные заказа не найдены", show_alert=True)
-            await clean_ui.safe_edit_or_send(
-                callback=callback,
-                text="🐕 Главное меню\n\nВыберите действие:",
-                keyboard=main_menu_keyboard()
-            )
-            return
-
-        # Получаем user_id напрямую
-        user = await cart_service.get_or_create_user(callback.from_user.id)
-        user_id = user.id
-
-        # Получаем информацию о пользователе для недостающих данных
-        user_info = await user_service.get_user_info(user_id)
-
-        # Заполняем недостающие данные
-        if not data.get("pet_name"):
-            if user_info and user_info.get("pet_name"):
-                data["pet_name"] = user_info.get("pet_name")
-            else:
-                data["pet_name"] = "Гость"
-
-        if not data.get("telegram_login"):
-            telegram_username = user_info.get("telegram_username") if user_info else None
-            data["telegram_login"] = telegram_username if telegram_username else callback.from_user.username or "unknown"
-
-        if not data.get("address"):
-            data["address"] = user_info.get("address") if user_info and user_info.get("address") else "Адрес не указан"
-
-        # Проверяем наличие корзины
-        if not data.get("cart_items"):
-            await callback.answer("❌ Корзина пуста", show_alert=True)
-            await state.clear()
-            await clean_ui.safe_edit_or_send(
-                callback=callback,
-                text="🐕 Главное меню\n\nВыберите действие:",
-                keyboard=main_menu_keyboard()
-            )
-            return
-
-        # Обновляем информацию о пользователе в БД
-        if data.get("pet_name") or data.get("telegram_login"):
-            user_update_data = {}
-            if data.get("pet_name"):
-                user_update_data["pet_name"] = data["pet_name"]
-            if data.get("telegram_login"):
-                user_update_data["telegram_login"] = data["telegram_login"]
-            
-            if user_update_data:
-                await user_service.update_user_info(user_id, **user_update_data)
-
-        async with get_session() as session:
-            # Создаем заказ
-            from database import Order, OrderItem
-            import datetime
-
-            order = Order(
-                user_id=user_id,
-                customer_name=data["pet_name"],
-                phone=f"@{data['telegram_login']}",
-                address=data['address'],
-                total_amount=data['total_amount'],
-                status="pending",
-                created_at=datetime.datetime.now()
-            )
-
-            session.add(order)
-            await session.commit()
-            await session.refresh(order)
-
-            # Создаем элементы заказа
-            for item_data in data['cart_items']:
-                order_item = OrderItem(
-                    order_id=order.id,
-                    product_id=item_data['product_id'],
-                    product_name=item_data['product_name'],
-                    price_per_100g=item_data['price_per_100g'],
-                    quantity=item_data['quantity']
-                )
-                session.add(order_item)
-
-                # Обновляем остатки товара
-                try:
-                    await update_product_stock_and_availability(
-                        item_data['product_id'],
-                        item_data['quantity']
-                    )
-                except Exception as stock_error:
-                    logger.error(f"Ошибка обновления остатков: {stock_error}")
-
-            await session.commit()
-
-            # Очищаем корзину
-            await cart_service.clear_cart(user_id)
-
-            # Очищаем временные количества
-            user_prefix = f"{callback.from_user.id}_"
-            keys_to_remove = [k for k in temp_quantities.keys() if k.startswith(user_prefix)]
-            for key in keys_to_remove:
-                temp_quantities.pop(key, None)
-
-            # Уведомление админу
-            try:
-                from notifications import notify_admin
-                await notify_admin(callback.bot, data, order.id)
-            except Exception as admin_error:
-                logger.error(f"Ошибка отправки уведомления админу: {admin_error}")
-
-            # Очищаем состояние
-            await state.clear()
-
-            success_text = (
-                "🎉 *Заказ успешно оформлен!*\n\n"
-                f"📦 *Номер заказа:* #{order.id}\n"
-                f"💰 *Сумма:* {order.total_amount:.0f} RSD\n\n"
-                "📞 *Что дальше?*\n"
-                "1. Мы свяжемся с вами для подтверждения заказа\n"
-                "2. Подготовим ваши лакомства\n"
-                "3. Согласуем условия самовывоза или доставки\n\n"
-                "*Спасибо за покупку!* 🐶"
-            )
-
-            await clean_ui.safe_edit_or_send(
-                callback=callback,
-                text=success_text,
-                keyboard=main_menu_keyboard()
-            )
-
-            await callback.answer()
-
-    except Exception as e:
-        logger.error(f"Ошибка подтверждения заказа: {e}")
-        await callback.answer("❌ Ошибка создания заказа", show_alert=True)
-        await state.clear()
-        await clean_ui.safe_edit_or_send(
-            callback=callback,
-            text="🐕 Главное меню\n\nВыберите действие:",
-            keyboard=main_menu_keyboard()
-        )
-
-# ========== ПРОФИЛЬ ==========
-
 @router.callback_query(F.data == "profile")
 async def show_profile(callback: CallbackQuery):
     """Показать профиль"""
@@ -1288,7 +1019,6 @@ async def show_profile(callback: CallbackQuery):
         error_message = await order_error_handler.handle_order_error(e, callback.from_user.id)
         await callback.answer(error_message, show_alert=True)
 
-
 # ========== ПОМОЩЬ ==========
 
 @router.callback_query(F.data == "help")
@@ -1314,3 +1044,99 @@ async def handle_help(callback: CallbackQuery):
         keyboard=help_keyboard()
     )
     await callback.answer()
+
+# ========== ОБРАБОТКА НЕИЗВЕСТНЫХ КОЛБЭКОВ ==========
+
+@router.callback_query()
+async def handle_unknown_callback(callback: CallbackQuery):
+    """Обработка неизвестных callback-запросов"""
+    # Игнорируем админские колбэки
+    if callback.data.startswith("admin_"):
+        return
+
+    # Игнорируем стандартные колбэки
+    if callback.data in ["main_menu", "catalog", "cart", "cart_check", "profile", "help"]:
+        return
+
+    # Игнорируем колбэки категорий и товаров
+    if (callback.data.startswith("category:") or
+        callback.data.startswith("product:") or
+        callback.data.startswith("back_to_products:")):
+        return
+
+    # Игнорируем колбэки количества и корзины
+    if callback.data.startswith("qty_") or callback.data.startswith("cart_add:"):
+        return
+
+    # Игнорируем колбэки корзины и заказа
+    if callback.data in ["cart_clear", "order_create", "order_confirm"]:
+        return
+
+    if callback.data in ["cart", "cart_check"]:
+        return
+
+    # Для всех остальных неизвестных колбэков
+    await callback.answer("⚠️ Эта кнопка сейчас не работает", show_alert=True)
+    await clean_ui.safe_edit_or_send(
+        callback=callback,
+        text="🐕 Главное меню\n\nВыберите действие:",
+        keyboard=main_menu_keyboard()
+    )
+
+
+async def check_telegram_login_clean(message: Message, state: FSMContext):
+    """Проверка наличия telegram логина - с clean_ui"""
+    data = await state.get_data()
+    user_info = data.get('user_info', {})
+
+    # Проверяем есть ли у пользователя telegram_username
+    telegram_username = user_info.get('telegram_username')
+
+    if telegram_username:
+        # У пользователя уже есть логин, пропускаем этот шаг
+        await state.update_data(telegram_login=telegram_username)
+
+        # Переходим к подтверждению заказа
+        await show_order_confirmation_clean(message, state)
+    else:
+        # Запрашиваем telegram login
+        await state.set_state(OrderForm.waiting_telegram_login)
+
+        telegram_text = (
+            "📱Введите ваш Telegram login (без @):\n"
+            "Например: ivanov_ivan"
+        )
+
+        await clean_ui.safe_edit_or_send_message(
+            message=message,
+            text=telegram_text,
+            keyboard=None
+        )
+
+async def show_order_confirmation_clean(message: Message, state: FSMContext):
+    """Показать подтверждение заказа - с clean_ui"""
+    data = await state.get_data()
+
+    # Формируем подтверждение
+    items_text = "\n".join([
+        f"• {item['product_name']}: {item['quantity']}{'г' if item.get('unit_type', 'grams') == 'grams' else 'шт'} - {item['total_price']:.0f} RSD"
+        for item in data["cart_items"]
+    ])
+
+    confirmation_text = (
+        "✅ Подтверждение заказа\n\n"
+        f"🐕 Питомец: {data['pet_name']}\n"
+        f"📱 Telegram: @{data['telegram_login']}\n"
+        f"📍 Адрес доставки: {data['address']}\n\n"
+        f"📋 Состав заказа:\n{items_text}\n\n"
+        f"💰 Итого к оплате: {data['total_amount']:.0f} RSD\n\n"
+        "Подтвердите заказ:"
+    )
+
+    # ИСПРАВЛЕНО: используем clean_ui для Message
+    from keyboards import order_confirmation_keyboard
+    await clean_ui.safe_edit_or_send_message(
+        message=message,
+        text=confirmation_text,
+        keyboard=order_confirmation_keyboard()
+    )
